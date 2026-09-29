@@ -1,0 +1,5 @@
+.build/
+.swiftpm/
+letterpress-example.pdf
+*.xcodeproj
+.DS_Store
