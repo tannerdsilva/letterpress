@@ -1,5 +1,58 @@
 import Foundation
 
+// MARK: - WinAnsi
+
+/// the single source of truth for "which cp1252 byte does this scalar become".
+///
+/// the encoder (`pdfEscape`) and the measurer (`Font.width`) both read this
+/// mapping, so a glyph can never be measured as one thing and drawn as
+/// another. a scalar with no winansi byte degrades to `?` in the stream and is
+/// measured as the face's `?` advance.
+enum WinAnsi {
+	/// the cp1252 byte `scalar` is written as, or `nil` when the scalar has no
+	/// winansi glyph.
+	static func byte(for scalar: Unicode.Scalar) -> UInt8? {
+		switch scalar.value {
+		// ascii printable, and the latin-1 / cp1252 visible range, are their
+		// own byte.
+		case 0x20 ... 0x7E, 0x80 ... 0xFF:
+			return UInt8(scalar.value)
+		// typographic punctuation → its cp1252 slot in 0x80-0x9F.
+		case 0x20AC: return 0x80   // €
+		case 0x201A: return 0x82   // ‚
+		case 0x0192: return 0x83   // ƒ
+		case 0x201E: return 0x84   // „
+		case 0x2026: return 0x85   // …
+		case 0x2020: return 0x86   // †
+		case 0x2021: return 0x87   // ‡
+		case 0x02C6: return 0x88   // ˆ
+		case 0x2030: return 0x89   // ‰
+		case 0x0160: return 0x8A   // Š
+		case 0x2039: return 0x8B   // ‹
+		case 0x0152: return 0x8C   // Œ
+		case 0x017D: return 0x8E   // Ž
+		case 0x2018: return 0x91   // ‘
+		case 0x2019: return 0x92   // ’
+		case 0x201C: return 0x93   // “
+		case 0x201D: return 0x94   // ”
+		case 0x2022: return 0x95   // •
+		case 0x2013: return 0x96   // –
+		case 0x2014: return 0x97   // —
+		case 0x02DC: return 0x98   // ˜
+		case 0x2122: return 0x99   // ™
+		case 0x0161: return 0x9A   // š
+		case 0x203A: return 0x9B   // ›
+		case 0x0153: return 0x9C   // œ
+		case 0x017E: return 0x9E   // ž
+		case 0x0178: return 0x9F   // Ÿ
+		default: return nil
+		}
+	}
+
+	/// the byte an unrepresentable scalar degrades to: the question mark.
+	static let fallback: UInt8 = 0x3F
+}
+
 // MARK: - PDF String Escaping
 
 /// encode a swift string as a pdf literal string body.
@@ -18,9 +71,9 @@ import Foundation
 /// - note: a bare unicode scalar in the output would be utf-8-encoded
 ///   downstream, so `·` (U+00B7) would ship as `0xC2 0xB7` and rasterize as
 ///   `Â·` — the stream must stay 7-bit. glyphs outside WinAnsi (cyrillic, cjk,
-///   emoji, ...) have no place in a base-14 font stream and become '?'. the
-///   width tables measure the same way, so `width(of:)` stays consistent with
-///   what renders.
+///   emoji, ...) have no place in a base-14 font stream and become '?'.
+///   `WinAnsi` is the shared mapping this and `Font.width` both read, so a
+///   glyph is measured as exactly the advance it renders with.
 public func pdfEscape(_ string: String) -> String {
 	var out = String()
 	out.reserveCapacity(string.count)
@@ -32,38 +85,16 @@ public func pdfEscape(_ string: String) -> String {
 		case 0x0A: out += "\\n"
 		case 0x0D: out += "\\r"
 		case 0x09: out += "\\t"
-		case 0x20 ... 0x7E: out.unicodeScalars.append(scalar)
-		// latin-1 letters and the cp1252 punctuation slots: one byte each.
-		case 0x80 ... 0xFF: out += octalEscape(scalar.value)
-		// typographic punctuation → cp1252 slots below 0xA0
-		case 0x20AC: out += "\\200"   // €
-		case 0x201A: out += "\\202"   // ‚
-		case 0x0192: out += "\\203"   // ƒ
-		case 0x201E: out += "\\204"   // „
-		case 0x2026: out += "\\205"   // …
-		case 0x2020: out += "\\206"   // †
-		case 0x2021: out += "\\207"   // ‡
-		case 0x02C6: out += "\\210"   // ˆ
-		case 0x2030: out += "\\211"   // ‰
-		case 0x0160: out += "\\212"   // Š
-		case 0x2039: out += "\\213"   // ‹
-		case 0x0152: out += "\\214"   // Œ
-		case 0x017D: out += "\\215"   // Ž
-		case 0x2018: out += "\\221"   // '
-		case 0x2019: out += "\\222"   // '
-		case 0x201C: out += "\\223"   // "
-		case 0x201D: out += "\\224"   // "
-		case 0x2022: out += "\\225"   // •
-		case 0x2013: out += "\\226"   // –
-		case 0x2014: out += "\\227"   // —
-		case 0x02DC: out += "\\230"   // ˜
-		case 0x2122: out += "\\231"   // ™
-		case 0x0161: out += "\\232"   // š
-		case 0x203A: out += "\\233"   // ›
-		case 0x0153: out += "\\234"   // œ
-		case 0x017E: out += "\\235"   // ž
-		case 0x0178: out += "\\236"   // Ÿ
-		default: out += "?"
+		default:
+			let byte = WinAnsi.byte(for: scalar) ?? WinAnsi.fallback
+			switch byte {
+			// ascii printable goes verbatim …
+			case 0x20 ... 0x7E:
+				out.unicodeScalars.append(Unicode.Scalar(byte))
+			// … and everything above it travels as an octal escape.
+			default:
+				out += octalEscape(UInt32(byte))
+			}
 		}
 	}
 	return out

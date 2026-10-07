@@ -73,4 +73,46 @@ import Testing
 			#expect(font.width(of: "W", size: 1000) == 600)
 		}
 	}
+
+	@Test("cp1252 punctuation measures at its real advance, not a flat fallback")
+	func cp1252Advances() {
+		// a flat 556 fallback under-reported the wide glyphs the encoder really
+		// emits (… and — are 1000) and over-reported the narrow ones.
+		#expect(Font.helvetica.width(of: "\u{2026}", size: 1000) == 1000)   // ellipsis
+		#expect(Font.helvetica.width(of: "\u{2014}", size: 1000) == 1000)   // em dash
+		#expect(Font.helvetica.width(of: "\u{2013}", size: 1000) == 556)    // en dash
+		#expect(Font.helvetica.width(of: "\u{2022}", size: 1000) == 350)    // bullet
+		#expect(Font.helvetica.width(of: "\u{2019}", size: 1000) == 222)    // right single quote
+		#expect(Font.helvetica.width(of: "\u{201C}", size: 1000) == 333)    // left double quote
+		#expect(Font.helvetica.width(of: "\u{00B7}", size: 1000) == 278)    // middle dot
+		// latin-1 letters are per-face too: é is 556 in Helvetica, 444 in Times.
+		#expect(Font.helvetica.width(of: "\u{00E9}", size: 1000) == 556)
+		#expect(Font.times.width(of: "\u{00E9}", size: 1000) == 444)
+		#expect(Font.courier.width(of: "\u{00E9}", size: 1000) == 600)
+	}
+
+	@Test("a scalar with no winansi glyph measures as this face's question mark")
+	func unmappableFallback() {
+		// 中 has no winansi glyph, so it renders as '?' — it must measure as '?',
+		// which is a different advance in every face.
+		let absent = "\u{4E2D}"
+		#expect(Font.helvetica.width(of: absent, size: 1000) == 556)
+		#expect(Font.helveticaBold.width(of: absent, size: 1000) == 611)
+		#expect(Font.times.width(of: absent, size: 1000) == 444)
+		#expect(Font.timesBold.width(of: absent, size: 1000) == 500)
+		#expect(Font.courier.width(of: absent, size: 1000) == 600)
+	}
+
+	@Test("measurement agrees with the encoder, byte for byte")
+	func measurementMatchesEncoder() {
+		// whatever the encoder writes for a scalar is what the meter charges:
+		// two spellings that encode to the same byte measure identically, and a
+		// scalar that degrades to '?' measures as '?'.
+		#expect(Font.helvetica.width(of: "\u{2026}", size: 1000)
+			== Font.helvetica.width(of: "\u{0085}", size: 1000))
+		#expect(Font.helvetica.width(of: "\u{2014}", size: 1000)
+			== Font.helvetica.width(of: "\u{0097}", size: 1000))
+		#expect(Font.helveticaBold.width(of: "\u{4E2D}", size: 1000)
+			== Font.helveticaBold.width(of: "?", size: 1000))
+	}
 }

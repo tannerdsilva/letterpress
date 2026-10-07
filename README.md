@@ -196,8 +196,10 @@ have caught real operator bugs a self-referential test cannot.
   punctuation (`—`, `…`, `“` `”`, `€`, `™`) both render and round-trip
   through `pdftotext`
 - no images, no flate compression, no links/form fields
-- text is measured from afm advance widths (no kerning); line position uses
-  an 0.8em baseline approximation
+- text is measured from the afm advance widths of the face *and the byte* each
+  scalar is actually written as (no kerning) — the single exception is `€`,
+  which the urw afms do not carry and which is therefore measured as `?`;
+  line position uses an 0.8em baseline approximation
 
 ## docs
 
