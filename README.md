@@ -52,6 +52,7 @@ try document.write(to: someURL)       // or straight to disk
 | concept | pdf-land |
 |---|---|
 | a drawing instruction | `Mark` — `func write(to renderer: inout Renderer)` + `func sizeThatFits(_:in:)` |
+| a mark that can state its path on demand | `PathMark` — `func writePath(to renderer: inout Renderer)`; lets a second paint in a chain restate the geometry the first one consumed |
 | wraps a mark's emission | `MarkModifier` — balanced `q`/`Q` scopes |
 | mark + modifier, types preserved | `ModifiedMark<Content, M>` |
 | composition | `MarkBuilder` / `PageBuilder` result builders |
@@ -115,9 +116,11 @@ HStack(alignment: .center) {
 
 ## features
 
-- all 12 base-14 fonts by name (`Font.helveticaBold`, `Font.times`, ...),
-  with exact afm advance widths compiled in for measurement, alignment, and
-  wrapping
+- all 12 base-14 fonts by name (`Font.helveticaBold`, `Font.times`, ...), with
+  each face's OWN afm advance widths compiled in for measurement, alignment,
+  and wrapping — a bold or italic face never borrows its regular sibling's
+  metrics (only the oblique faces are genuinely metric-identical to their
+  upright sibling, and only courier is uniform across its four faces)
 - shapes: `Rect` (incl. rounded), `Ellipse` (circles via square bounds),
   `Line`, `Polygon`, full-bleed page `background`
 - auto layout: `HStack`/`VStack` flex containers with `Spacer` distribution,
@@ -127,19 +130,58 @@ HStack(alignment: .center) {
   into the content box, and materializes one plain physical page per bucket
 - `Color` with hex/int initializers and `.opacity(_:)` — transparency renders
   through shared, deduplicated `/ExtGState` resources
-- winansi text encoding: latin-1 verbatim, typographic punctuation (`"`,
-  `'`, `—`, `–`, `…`, `€`, `™`, ...) mapped to their cp1252 slots and
-  declared on every font dict as `/Encoding /WinAnsiEncoding`
+- winansi text encoding: the content stream stays 7-bit — latin-1 letters and
+  the cp1252 punctuation slots travel as three-digit octal escapes, typographic
+  punctuation (`"`, `'`, `—`, `–`, `…`, `€`, `™`, ...) is mapped to its cp1252
+  slot, and every font dict declares `/Encoding /WinAnsiEncoding`
+- paint composition: `.fill(...).stroke(...)` paints both — a paint ends with a
+  path-consuming operator (`f`/`S`) and pdf has no paint that leaves the path
+  intact, so the outer paint restates the geometry through `PathMark`
 - deterministic output (byte-identical across runs), minimal numbers
   (`612`, not `612.00`), trimmed trailing zeros
 - pure swift, no Foundation beyond `Date`/`URL`/`Data`/`FileManager`; the
   renderer accumulates `[UInt8]`
 
+## markdown → pdf
+
+`LetterpressMarkdown` is a separate, zero-dependency target that typesets a
+markdown subset into a paginated document. `letterpress-md` is the CLI over it;
+the CLI is the only target in the package that takes a dependency
+(`swift-argument-parser` — the exporter and the markdown layer stay clean).
+
+```bash
+swift run letterpress-md Examples/markdown-sample.md -o sample.pdf
+swift run letterpress-md - -o out.pdf < input.md        # stdin
+```
+
+```swift
+import LetterpressMarkdown
+
+let document = MarkdownDocument(parsing: source)
+let bytes = document.render(style: .standard)   // or .pdfDocument() for the pages
+```
+
+- `BasicMarkdownParser` (a `MarkdownParser`) handles atx/setext headings,
+  paragraphs, fenced code, blockquotes, ordered and unordered lists (nested by
+  indent), thematic breaks, `**bold**`, `*italic*`, `***both***`, `` `code` ``,
+  `[links](url)`, `![alt](url)`, backslash escapes, entities, and hard breaks
+- blocks compose into `Mark`s and flow through one `Galley`, so a long document
+  paginates with no manual page management
+- `MarkdownStyle` carries the whole look — page geometry, typefaces, sizes,
+  colours, rhythm — in one value type
+- inline runs are laid out word by word using only the exporter's public
+  surface, so the markdown layer adds no API to `Letterpress`
+- the CLI is a `ParsableCommand`: `--help`/`--version` are free, a bad value or
+  unknown flag exits 64 with usage, an unreadable input exits 1 with a message,
+  and `--quiet`/`--no-quiet` is a proper flag pair. it prints a compact json
+  summary (`{"blocks":…,"pages":…,"bytes":…}`) so it composes with other tools
+
 ## verify
 
 ```bash
-swift test                              # 98 tests, 16 suites
+swift test                              # 144 tests, 19 suites
 swift run LetterpressExample            # writes letterpress-example.pdf
+swift run letterpress-md Examples/markdown-sample.md -o sample.pdf
 pdfinfo/pdftotext/pdftoppm letterpress-example.pdf   # independent parser check
 ```
 
