@@ -168,7 +168,7 @@ public struct Paragraph: Mark {
 ///         .stroke(.blue, width: 2)
 ///
 /// `x`,`y` are the top-left corner, `width`/`height` extend right and down.
-public struct Rect: Mark {
+public struct Rect: PathMark {
 	public let x: Double
 	public let y: Double
 	public let width: Double
@@ -184,6 +184,10 @@ public struct Rect: Mark {
 	}
 
 	public func write(to renderer: inout Renderer) {
+		writePath(to: &renderer)
+	}
+
+	public func writePath(to renderer: inout Renderer) {
 		let bottom = renderer.flippedY(y) - height
 		if cornerRadius > 0 {
 			let radius = min(cornerRadius, min(width, height) / 2)
@@ -208,7 +212,7 @@ public struct Rect: Mark {
 ///
 /// `x`,`y` are the top-left of the bounding box; equal `width`/`height` make
 /// a circle.
-public struct Ellipse: Mark {
+public struct Ellipse: PathMark {
 	public let x: Double
 	public let y: Double
 	public let width: Double
@@ -222,6 +226,10 @@ public struct Ellipse: Mark {
 	}
 
 	public func write(to renderer: inout Renderer) {
+		writePath(to: &renderer)
+	}
+
+	public func writePath(to renderer: inout Renderer) {
 		let bottom = renderer.flippedY(y) - height
 		let centerX = x + width / 2
 		let centerY = bottom + height / 2
@@ -247,7 +255,7 @@ public struct Ellipse: Mark {
 ///
 ///     Line(from: Point(x: 72, y: 420), to: Point(x: 500, y: 420))
 ///         .stroke(.coral, width: 3)
-public struct Line: Mark {
+public struct Line: PathMark {
 	public let from: Point
 	public let to: Point
 
@@ -257,6 +265,10 @@ public struct Line: Mark {
 	}
 
 	public func write(to renderer: inout Renderer) {
+		writePath(to: &renderer)
+	}
+
+	public func writePath(to renderer: inout Renderer) {
 		renderer.append("\(PDFNumber(from.x)) \(PDFNumber(renderer.flippedY(from.y))) m\n")
 		renderer.append("\(PDFNumber(to.x)) \(PDFNumber(renderer.flippedY(to.y))) l\n")
 	}
@@ -275,7 +287,7 @@ public struct Line: Mark {
 ///         Point(x: 172, y: 500),
 ///         Point(x: 172, y: 560),
 ///     ]).fill(.green)
-public struct Polygon: Mark {
+public struct Polygon: PathMark {
 	public let vertices: [Point]
 
 	public init(_ vertices: [Point]) {
@@ -283,6 +295,10 @@ public struct Polygon: Mark {
 	}
 
 	public func write(to renderer: inout Renderer) {
+		writePath(to: &renderer)
+	}
+
+	public func writePath(to renderer: inout Renderer) {
 		guard let first = vertices.first else { return }
 		renderer.append("\(PDFNumber(first.x)) \(PDFNumber(renderer.flippedY(first.y))) m\n")
 		for vertex in vertices.dropFirst() {

@@ -107,3 +107,22 @@ func allContentStreams(_ document: PDFDocument) -> String {
 	}
 	return result
 }
+
+// MARK: - byte scanning
+
+/// count non-overlapping occurrences of `pattern` in `bytes`. operator-level
+/// assertions are about bytes, not about text.
+func countOccurrences(_ bytes: [UInt8], _ pattern: [UInt8]) -> Int {
+	guard !pattern.isEmpty, bytes.count >= pattern.count else { return 0 }
+	var count = 0
+	var index = 0
+	while index <= bytes.count - pattern.count {
+		if bytes[index ..< (index + pattern.count)].elementsEqual(pattern) {
+			count += 1
+			index += pattern.count
+		} else {
+			index += 1
+		}
+	}
+	return count
+}

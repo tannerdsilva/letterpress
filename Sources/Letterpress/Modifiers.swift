@@ -2,9 +2,28 @@ import Foundation
 
 // MARK: - paint modifiers (shapes)
 
+/// a modifier that paints without moving the geometry it wraps.
+///
+/// a filled or stroked path is still a path — the paint consumed the current
+/// path but did not change it — so a later paint in the same chain can state
+/// the geometry again (`PaintedPathMark`). modifiers that reposition content
+/// (`frame`, `at`) are not path-transparent.
+public protocol PathTransparentModifier: MarkModifier {}
+
+/// state the wrapped mark's path again when an inner paint already consumed it.
+///
+/// each paint ends with a path-consuming operator, and pdf has no paint that
+/// leaves the path intact, so the outer paint of a chain has to restate the
+/// geometry it is about to paint.
+private func restatePath<Content: Mark>(content: Content, to renderer: inout Renderer) {
+	if let painted = content as? any PaintedPathMark {
+		painted.writePath(to: &renderer)
+	}
+}
+
 /// fills the wrapped mark's path after it paints. use on closed shapes
 /// (`Rect`, `Ellipse`, `Polygon`).
-public struct FillModifier: MarkModifier {
+public struct FillModifier: MarkModifier, PathTransparentModifier {
 	public let color: Color
 
 	public init(color: Color) {
@@ -18,6 +37,7 @@ public struct FillModifier: MarkModifier {
 		}
 		renderer.append("\(PDFNumber(color.r)) \(PDFNumber(color.g)) \(PDFNumber(color.b)) rg\n")
 		content.write(to: &renderer)
+		restatePath(content: content, to: &renderer)
 		renderer.append("f\n")
 		renderer.append("Q\n")
 	}
@@ -28,7 +48,7 @@ public struct FillModifier: MarkModifier {
 ///
 /// the reported size includes the stroke bleed (half the width on every
 /// side), so containers space for a stroked mark correctly.
-public struct StrokeModifier: MarkModifier {
+public struct StrokeModifier: MarkModifier, PathTransparentModifier {
 	public let color: Color
 	public let width: Double
 
@@ -45,6 +65,7 @@ public struct StrokeModifier: MarkModifier {
 		renderer.append("\(PDFNumber(width)) w\n")
 		renderer.append("\(PDFNumber(color.r)) \(PDFNumber(color.g)) \(PDFNumber(color.b)) RG\n")
 		content.write(to: &renderer)
+		restatePath(content: content, to: &renderer)
 		renderer.append("S\n")
 		renderer.append("Q\n")
 	}

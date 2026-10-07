@@ -151,6 +151,75 @@ private let a4Height = 841.89
 		#expect(s.contains("0.15 0.39 0.92 RG\n"))
 	}
 
+	@Test("a stroke after a fill restates the path, so both paints land")
+	func fillThenStrokeRestatesPath() throws {
+		let doc = PDFDocument {
+			PDFPage(.a4) {
+				Rect(x: 72, y: 360, width: 130, height: 70).fill(.red).stroke(.blue, width: 2)
+			}
+		}
+		let s = contentStreamText(doc)
+		let bytes = Array(s.utf8)
+		// the geometry is stated twice: once for the fill, once for the stroke
+		// (a paint consumes the current path, and `q`/`Q` does not save it)
+		#expect(countOccurrences(bytes, Array("re\n".utf8)) == 2)
+		#expect(countOccurrences(bytes, Array("f\n".utf8)) == 1)
+		#expect(countOccurrences(bytes, Array("S\n".utf8)) == 1)
+
+		let fill = try #require(s.range(of: "f\n"))
+		let restated = try #require(s.range(of: "re\n", range: fill.upperBound ..< s.endIndex))
+		let stroke = try #require(s.range(of: "S\n"))
+		#expect(fill.upperBound < restated.lowerBound)
+		// the restated path runs straight into the stroke it exists for
+		#expect(s.contains("re\nS\n"))
+		#expect(restated.upperBound <= stroke.lowerBound)
+	}
+
+	@Test("two strokes in one chain both land")
+	func strokeThenStroke() throws {
+		let doc = PDFDocument {
+			PDFPage(.a4) {
+				Rect(x: 10, y: 10, width: 40, height: 20).stroke(.red, width: 2).stroke(.blue, width: 4)
+			}
+		}
+		let bytes = Array(contentStreamText(doc).utf8)
+		#expect(countOccurrences(bytes, Array("re\n".utf8)) == 2)
+		#expect(countOccurrences(bytes, Array("S\n".utf8)) == 2)
+		#expect(countOccurrences(bytes, Array("2 w\n".utf8)) == 1)
+		#expect(countOccurrences(bytes, Array("4 w\n".utf8)) == 1)
+	}
+
+	@Test("a single paint states the path exactly once")
+	func singlePaintStatesPathOnce() throws {
+		let marks: [any Mark] = [
+			Rect(x: 10, y: 10, width: 40, height: 20).stroke(.red, width: 1),
+			Rect(x: 10, y: 10, width: 40, height: 20).fill(.red),
+			Ellipse(x: 10, y: 10, width: 40, height: 20).fill(.green),
+		]
+		for mark in marks {
+			let doc = PDFDocument { PDFPage(.a4) { mark } }
+			let stream = contentStreamText(doc)
+			#expect(countOccurrences(Array(stream.utf8), Array("re\n".utf8)) <= 1)
+		}
+	}
+
+	@Test("a fill over a container still paints the subtree")
+	func containerFill() throws {
+		// a container is not a PathMark: the paint falls back to the whole mark
+		let doc = PDFDocument {
+			PDFPage(.a4) {
+				VStack {
+					Rect(x: 0, y: 0, width: 30, height: 10)
+				}
+				.fill(.red)
+			}
+		}
+		let stream = contentStreamText(doc)
+		#expect(countOccurrences(Array(stream.utf8), Array("re\n".utf8)) == 1)
+		#expect(stream.contains("f\n"))
+		#expect(!stream.contains("S\n"))
+	}
+
 	@Test("translucent fill registers an ext-gstate and scopes it")
 	func translucent() throws {
 		let doc = PDFDocument {

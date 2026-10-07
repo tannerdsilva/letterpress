@@ -17,10 +17,30 @@ import Testing
 		#expect(pdfEscape("Hello, PDF 123!") == "Hello, PDF 123!")
 	}
 
-	@Test("latin-1 letters pass through")
+	@Test("latin-1 letters and cp1252 bytes become octal escapes")
 	func latin1() {
-		#expect(pdfEscape("café") == "café")
-		#expect(pdfEscape("Ünïcödé") == "Ünïcödé")
+		// the stream must stay 7-bit: a bare scalar would be utf-8-encoded and
+		// rasterize as mojibake ("cafÃ©", "Â·")
+		#expect(pdfEscape("café") == "caf\\351")
+		#expect(pdfEscape("Ünïcödé") == "\\334n\\357c\\366d\\351")
+		#expect(pdfEscape("·") == "\\267")
+		#expect(pdfEscape("×") == "\\327")
+	}
+
+	@Test("a rendered stream carries no bare multi-byte utf-8 for latin-1 text")
+	func latin1Stream() throws {
+		let doc = PDFDocument {
+			PDFPage(.a4) {
+				Text("·×— café").font(.helvetica, size: 12).at(x: 10, y: 10)
+			}
+		}
+		let stream = contentStreamText(doc)
+		#expect(stream.contains("(\\267\\327\\227 caf\\351) Tj"))
+
+		let bytes = doc.render()
+		#expect(countOccurrences(bytes, [0xC2, 0xB7]) == 0, "middle dot shipped as utf-8")
+		#expect(countOccurrences(bytes, [0xC3, 0x97]) == 0, "multiplication sign shipped as utf-8")
+		#expect(countOccurrences(bytes, [0xC3, 0xA9]) == 0, "e-acute shipped as utf-8")
 	}
 
 	@Test("typographic punctuation maps to cp1252 slots")

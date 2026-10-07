@@ -4,16 +4,23 @@ import Foundation
 
 /// encode a swift string as a pdf literal string body.
 ///
-/// pdf literal strings escape `(`, `)`, `\` and non-ASCII bytes via octal
-/// escapes. this emits WinAnsi (cp1252) bytes for the characters pdf's
-/// standard 14 fonts understand: ASCII verbatim, latin-1 letters in
-/// 0xA1-0xFF verbatim, the common typographic punctuation mapped to its
-/// cp1252 slot, everything else degraded to '?'.
+/// pdf literal strings carry BYTES, and a page's content stream is assembled
+/// as a swift `String` that is utf-8-encoded on the way to bytes — so this
+/// function emits 7-bit ascii only: every byte above 0x7E travels as a
+/// three-digit octal escape (`\267` for the cp1252 middle dot, `\227` for an
+/// em dash).
 ///
-/// - note: pdf strings carry bytes, not unicode — glyphs outside WinAnsi
-///   (cyrillic, cjk, emoji, ...) have no place in a base-14 font stream and
-///   become '?'. the width tables measure the same way, so `width(of:)`
-///   stays consistent with what renders.
+/// covers the characters pdf's standard 14 fonts understand: ascii verbatim,
+/// the latin-1 / cp1252 visible range 0x80-0xFF as octal escapes, the common
+/// typographic punctuation mapped to its cp1252 slot, everything else
+/// degraded to '?'.
+///
+/// - note: a bare unicode scalar in the output would be utf-8-encoded
+///   downstream, so `·` (U+00B7) would ship as `0xC2 0xB7` and rasterize as
+///   `Â·` — the stream must stay 7-bit. glyphs outside WinAnsi (cyrillic, cjk,
+///   emoji, ...) have no place in a base-14 font stream and become '?'. the
+///   width tables measure the same way, so `width(of:)` stays consistent with
+///   what renders.
 public func pdfEscape(_ string: String) -> String {
 	var out = String()
 	out.reserveCapacity(string.count)
@@ -26,7 +33,8 @@ public func pdfEscape(_ string: String) -> String {
 		case 0x0D: out += "\\r"
 		case 0x09: out += "\\t"
 		case 0x20 ... 0x7E: out.unicodeScalars.append(scalar)
-		case 0xA0 ... 0xFF: out.unicodeScalars.append(scalar)
+		// latin-1 letters and the cp1252 punctuation slots: one byte each.
+		case 0x80 ... 0xFF: out += octalEscape(scalar.value)
 		// typographic punctuation → cp1252 slots below 0xA0
 		case 0x20AC: out += "\\200"   // €
 		case 0x201A: out += "\\202"   // ‚
@@ -59,4 +67,15 @@ public func pdfEscape(_ string: String) -> String {
 		}
 	}
 	return out
+}
+
+/// a three-digit octal escape for one byte value (`0xB7` -> `\267`).
+private func octalEscape(_ value: UInt32) -> String {
+	var digits: [UInt8] = []
+	var remaining = value
+	for _ in 0 ..< 3 {
+		digits.append(UInt8(48 + remaining % 8))
+		remaining /= 8
+	}
+	return "\\" + String(decoding: digits.reversed(), as: UTF8.self)
 }

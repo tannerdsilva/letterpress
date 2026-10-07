@@ -21,6 +21,20 @@ public protocol Mark: Sendable {
 	func sizeThatFits(_ proposal: ProposedSize, in context: inout MeasureContext) -> Size
 }
 
+// MARK: - PathMark Protocol
+
+/// a `Mark` that draws a path and can state that path on demand.
+///
+/// a paint modifier ends its emission with a path-consuming operator (`f` or
+/// `S`), and pdf has no paint that leaves the current path intact — so a
+/// second paint in the same chain would find nothing to paint. a `PathMark`
+/// answers `writePath` so the outer paint can state the geometry again, which
+/// is what makes `.fill(...).stroke(...)` draw both paints.
+public protocol PathMark: Mark {
+	/// emit this mark's path only — no colour, no paint operator.
+	func writePath(to renderer: inout Renderer)
+}
+
 // MARK: - MarkModifier Protocol
 
 /// transforms the emission of a wrapped mark — the pdf analogue of a
@@ -72,6 +86,25 @@ public struct ModifiedMark<Content: Mark, M: MarkModifier>: Mark {
 		modifier.sizeThatFits(content: content, proposal: proposal, in: &context)
 	}
 }
+
+// MARK: - PaintedPathMark
+
+/// a path that a paint modifier has already painted: the wrapped geometry is
+/// still available, but a paint operator consumed the current path — so a
+/// paint wrapping this must state `writePath` again before its own operator.
+public protocol PaintedPathMark: PathMark {}
+
+/// a paint modifier does not move the geometry it paints, so a painted path is
+/// still a path (and still knows the geometry to restate).
+extension ModifiedMark: PathMark where Content: PathMark, M: PathTransparentModifier {
+	public func writePath(to renderer: inout Renderer) {
+		content.writePath(to: &renderer)
+	}
+}
+
+/// the same shape, marked as already painted: a paint wrapping it must state
+/// the path again (the conformance above supplies `writePath`).
+extension ModifiedMark: PaintedPathMark where Content: PathMark, M: PathTransparentModifier {}
 
 // MARK: - EmptyMark
 
