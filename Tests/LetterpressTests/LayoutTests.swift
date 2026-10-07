@@ -195,6 +195,20 @@ private func approxEqual(_ a: Double, _ b: Double, tolerance: Double = 0.0005) -
 		let textIndex = s.range(of: "(top)")!.lowerBound
 		#expect(rectIndex < textIndex)
 	}
+
+	@Test("a width-dependent child measures inside a zstack as it draws")
+	func zstackMeasuresUnderProposal() {
+		// a BARE paragraph (no frame): its wrap follows the ambient width, so
+		// measuring it unconstrained reports a height it does not draw.
+		let paragraph = Paragraph("aa aa aa aa aa aa aa aa aa aa aa aa aa aa aa aa")
+			.font(.helvetica, size: 12)
+		let column = ProposedSize(width: 100, height: nil)
+		// it really does wrap at this width …
+		#expect(sizeOf(paragraph, proposal: column).height > sizeOf(paragraph).height)
+		// … so the stack must report the wrapped height, not the unwrapped one.
+		#expect(sizeOf(ZStack { paragraph }, proposal: column).height
+			== sizeOf(paragraph, proposal: column).height)
+	}
 }
 
 // MARK: - flex distribution

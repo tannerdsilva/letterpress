@@ -265,7 +265,9 @@ public struct HStack: Mark {
 ///
 /// children keep their own positions (shapes carry geometry, text anchors
 /// at the ambient position); unlike `HStack`/`VStack`, `ZStack` places
-/// nothing. its size is the extent of the largest child.
+/// nothing. its size is the extent of the largest child, and every child is
+/// measured under the same proposal it is written with — so a width-dependent
+/// child (a `Paragraph`) reports the height it actually draws.
 public struct ZStack: Mark {
 	public let children: [any Mark]
 
@@ -283,7 +285,10 @@ public struct ZStack: Mark {
 		var width = 0.0
 		var height = 0.0
 		for child in children {
-			let size = child.sizeThatFits(.unconstrained, in: &context)
+			// measure under the SAME proposal `write` hands the child, or a
+			// width-dependent child (a Paragraph) is measured unwrapped and
+			// drawn wrapped, reporting a height it does not honour.
+			let size = child.sizeThatFits(proposal, in: &context)
 			width = max(width, size.width)
 			height = max(height, size.height)
 		}
