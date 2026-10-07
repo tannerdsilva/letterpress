@@ -137,6 +137,11 @@ HStack(alignment: .center) {
 - paint composition: `.fill(...).stroke(...)` paints both — a paint ends with a
   path-consuming operator (`f`/`S`) and pdf has no paint that leaves the path
   intact, so the outer paint restates the geometry through `PathMark`
+- `Mark` and `MarkModifier` are implementable from outside the package: a
+  conformer composes the built-in marks, or emits operators through
+  `renderer.append` and reads the `renderer.proposedSize` it is rendered under.
+  paint helpers are declared on `PathMark`, so a mark with no path cannot be
+  painted — `Text("x").fill(.red)` does not compile
 - deterministic output (byte-identical across runs), minimal numbers
   (`612`, not `612.00`), trimmed trailing zeros
 - pure swift, no Foundation beyond `Date`/`URL`/`Data`/`FileManager`; the
@@ -179,7 +184,7 @@ let bytes = document.render(style: .standard)   // or .pdfDocument() for the pag
 ## verify
 
 ```bash
-swift test                              # 144 tests, 19 suites
+swift test                              # 155 tests, 21 suites
 swift run LetterpressExample            # writes letterpress-example.pdf
 swift run letterpress-md Examples/markdown-sample.md -o sample.pdf
 pdfinfo/pdftotext/pdftoppm letterpress-example.pdf   # independent parser check
@@ -187,6 +192,12 @@ pdfinfo/pdftotext/pdftoppm letterpress-example.pdf   # independent parser check
 
 the pdf is verified against poppler's `pdfinfo`/`pdftotext`/`pdftoppm`, which
 have caught real operator bugs a self-referential test cannot.
+
+the `independent parser check` suite runs that check automatically: it renders a
+page, asks `pdftotext -bbox` where the glyphs actually landed, and fails if a run
+overlaps the word the library placed after it. it is what catches a metrics
+regression — reverting either the per-face tables or the per-glyph cp1252
+measurement makes it fail — and it skips (visibly) where poppler is absent.
 
 ## limitations (v1, by design)
 
