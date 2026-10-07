@@ -203,15 +203,17 @@ private let a4Height = 841.89
 		}
 	}
 
-	@Test("a fill over a container still paints the subtree")
+	@Test("a container has no path, so a box is painted by painting its shape")
 	func containerFill() throws {
-		// a container is not a PathMark: the paint falls back to the whole mark
+		// paint helpers are declared on `PathMark`, so `VStack { ... }.fill(.red)`
+		// is a compile error — a container owns no path, and the old spelling
+		// relied on whatever path the subtree happened to leave open. the box is
+		// painted by making the rect itself the painted mark.
 		let doc = PDFDocument {
 			PDFPage(.a4) {
 				VStack {
-					Rect(x: 0, y: 0, width: 30, height: 10)
+					Rect(x: 0, y: 0, width: 30, height: 10).fill(.red)
 				}
-				.fill(.red)
 			}
 		}
 		let stream = contentStreamText(doc)

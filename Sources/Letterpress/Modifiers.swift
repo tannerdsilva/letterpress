@@ -308,10 +308,14 @@ extension VerticalAlignment {
 	}
 }
 
-// MARK: - Mark modifier chaining
+// MARK: - path paint chaining
 
-extension Mark {
+extension PathMark {
 	/// fill the mark's path with `color`.
+	///
+	/// declared on `PathMark`, not `Mark`: a paint consumes the current path, so
+	/// a mark with no path has nothing to fill. putting these on the base
+	/// protocol would let `Text("x").fill(.red)` compile with nothing to paint.
 	public func fill(_ color: Color) -> ModifiedMark<Self, FillModifier> {
 		ModifiedMark(content: self, modifier: FillModifier(color: color))
 	}
@@ -320,7 +324,11 @@ extension Mark {
 	public func stroke(_ color: Color, width: Double) -> ModifiedMark<Self, StrokeModifier> {
 		ModifiedMark(content: self, modifier: StrokeModifier(color: color, width: width))
 	}
+}
 
+// MARK: - Mark modifier chaining
+
+extension Mark {
 	/// set the text color (no paint — the text marks itself).
 	public func foregroundColor(_ color: Color) -> ModifiedMark<Self, ForegroundColorModifier> {
 		ModifiedMark(content: self, modifier: ForegroundColorModifier(color: color))

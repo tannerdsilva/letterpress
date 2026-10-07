@@ -83,11 +83,15 @@ private func approxEqual(_ a: Double, _ b: Double, tolerance: Double = 0.0005) -
 	@Test("paint and placement do not affect measurement; stroke bleeds")
 	func modifierPassthrough() {
 		let plain = sizeOf(Text("a").font(.helvetica, size: 12))
-		let painted = sizeOf(Text("a").font(.helvetica, size: 12).fill(.red).at(x: 99, y: 99))
-		#expect(plain == painted)
-		let stroked = sizeOf(Text("a").font(.helvetica, size: 12).stroke(.blue, width: 2))
-		#expect(approxEqual(stroked.width, plain.width + 2))
-		#expect(approxEqual(stroked.height, plain.height + 2))
+		// placement is size-neutral
+		#expect(sizeOf(Text("a").font(.helvetica, size: 12).at(x: 99, y: 99)) == plain)
+		// paint is size-neutral, but only a PATH can be painted — so the paint
+		// cases use a shape, never a text mark.
+		let rect = sizeOf(Rect(x: 0, y: 0, width: 40, height: 20))
+		#expect(sizeOf(Rect(x: 0, y: 0, width: 40, height: 20).fill(.red)) == rect)
+		let stroked = sizeOf(Rect(x: 0, y: 0, width: 40, height: 20).stroke(.blue, width: 2))
+		#expect(approxEqual(stroked.width, rect.width + 2))
+		#expect(approxEqual(stroked.height, rect.height + 2))
 		let retimed = sizeOf(Text("a").font(.times, size: 24))
 		#expect(approxEqual(retimed.width, Font.times.width(of: "a", size: 24)))
 		#expect(approxEqual(retimed.height, 30))
