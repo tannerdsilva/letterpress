@@ -55,24 +55,37 @@ public struct Renderer: Sendable {
 
 	// MARK: text style state
 
-	/// the text style active while a text mark writes. modifiers push this
-	/// state in and restore it after, keeping sibling marks independent.
-	internal var text = TextState()
+	/// the text style active while a text mark writes.
+	///
+	/// `public` because a `MarkModifier` styles content by mutating this, and a
+	/// modifier written outside this module has to be able to do the same. such
+	/// a modifier saves this, sets what it needs, delegates, then restores it —
+	/// the shape every style modifier in this module already follows.
+	public var text = TextState()
 
 	// MARK: layout state
 
-	/// the size proposal active while a mark writes. `FrameModifier` pushes
-	/// this in and restores it after; containers lay out against it and
-	/// paragraphs wrap to it.
-	internal var proposedSize = ProposedSize.unconstrained
+	/// the size proposal active while a mark writes.
+	///
+	/// `public` so a conforming mark measures itself against the same proposal
+	/// it renders under (the measure/write agreement invariant), and so a custom
+	/// container can propose to its children the way `FrameModifier` does.
+	/// whichever mark changes it must restore it before returning.
+	public var proposedSize = ProposedSize.unconstrained
 
 	// MARK: low-level emission
 
-	internal mutating func append(_ string: String) {
+	/// append a fragment of pdf content-stream syntax.
+	///
+	/// the escape hatch for a mark that draws something the built-in marks do
+	/// not express. keep numbers going through `PDFNumber` (locale-independent)
+	/// and string bodies through `pdfEscape` (7-bit).
+	public mutating func append(_ string: String) {
 		bytes.append(contentsOf: string.utf8)
 	}
 
-	internal mutating func append(_ number: PDFNumber) {
+	/// append a pdf number to the content stream.
+	public mutating func append(_ number: PDFNumber) {
 		append(number.description)
 	}
 }

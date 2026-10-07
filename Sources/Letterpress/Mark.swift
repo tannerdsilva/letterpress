@@ -8,6 +8,14 @@ import Foundation
 /// how much space it occupies for a given proposal. marks are value types:
 /// every mark is a pure description of what to draw, and the renderer is
 /// the only thing that mutates while the document assembles.
+///
+/// the protocol is implementable outside this module. a conformer either
+/// composes the built-in marks (`Text`, `Rect`, `VStack`, ...), or emits
+/// operators itself through `renderer.append`, and it reads
+/// `renderer.proposedSize` — the same proposal `sizeThatFits` was handed — so
+/// measurement and drawing cannot disagree. `Renderer.text` and
+/// `Renderer.proposedSize` are writable for a container or a modifier that
+/// needs to push state in, but such a mark must restore them.
 public protocol Mark: Sendable {
 	/// emit this mark's operators into the renderer.
 	func write(to renderer: inout Renderer)

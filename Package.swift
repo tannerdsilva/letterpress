@@ -68,6 +68,15 @@ let package = Package(
                 "Letterpress",
             ]
         ),
+        // deliberately does NOT use @testable: this target proves the public
+        // surface is enough to implement a `Mark` and a `MarkModifier` from
+        // outside the module, and fails the build if that ever regresses.
+        .testTarget(
+            name: "LetterpressPublicAPITests",
+            dependencies: [
+                "Letterpress",
+            ]
+        ),
         .testTarget(
             name: "LetterpressMarkdownTests",
             dependencies: [
