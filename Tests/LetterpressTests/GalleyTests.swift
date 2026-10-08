@@ -127,10 +127,11 @@ private func galley(_ spacing: Double = 0, @MarkBuilder content: () -> [any Mark
 		#expect(page2.contains("0 0 200 100 re f"))
 	}
 
-	@Test("nested containers flow as one atomic unit")
+	@Test("a nested stack moves whole when it cannot split usefully")
 	func nestedAtomic() {
-		// a nested stack of two 30pt rules is 66 tall (15+6+15+... no):
-		// Rules have no line-height style; VStack sums geometry plus spacing.
+		// a nested stack of two 30pt rules is 66 tall (30 + 6 + 30). the stack
+		// is breakable, but 14pt of remainder cannot take even its first rule,
+		// so the stack moves whole rather than splitting to nothing.
 		let one = galley(10) {
 			VStack(spacing: 6) {
 				Rule(height: 30)

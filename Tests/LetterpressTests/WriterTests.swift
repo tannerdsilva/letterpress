@@ -141,11 +141,12 @@ private func sampleDocument() -> PDFDocument {
 	func empty() throws {
 		let doc = PDFDocument {}
 		let parsed = try #require(ParsedPDF(bytes: doc.render()))
-		// 2 objects (catalog + pages) plus the free entry
-		#expect(parsed.objectCount == 3)
+		// a document always has at least one page: catalog + pages tree
+		// + the blank page + its content stream, plus the free entry.
+		#expect(parsed.objectCount == 5)
 		let pages = try #require(parsed.objectBody(2))
-		#expect(pages.contains("/Count 0"))
-		#expect(pages.contains("/Kids []"))
+		#expect(pages.contains("/Count 1"))
+		#expect(pages.contains("/Kids [ 3 0 R]"))
 	}
 
 	@Test("render output round-trips through the xref parser")

@@ -10,28 +10,44 @@ import Letterpress
 /// multiple of the font size.
 public struct MarkdownStyle: Sendable {
 	// page
+	/// the physical page size.
 	public var pageSize: PageSize
+	/// the page margins.
 	public var margins: Margins
 
 	// type
+	/// the body typeface.
 	public var typeface: MarkdownTypeface
+	/// the typeface for code spans and blocks.
 	public var codeTypeface: MarkdownTypeface
+	/// the body point size.
 	public var bodySize: Double
+	/// the body line-height multiple.
 	public var lineHeight: Double
 
 	// colour
+	/// the body text color.
 	public var textColor: Color
+	/// the heading text color.
 	public var headingColor: Color
+	/// the color links paint in.
 	public var linkColor: Color
+	/// the inline and block code text color.
 	public var codeColor: Color
+	/// the code-block panel fill.
 	public var codeBackground: Color
+	/// the color of blockquote bars and thematic rules.
 	public var barColor: Color
 
 	// rhythm
+	/// the vertical gap before each block.
 	public var blockSpacing: Double
+	/// the vertical gap between list items.
 	public var itemSpacing: Double
+	/// the code point size.
 	public var codeSize: Double
 
+	/// create the default theme; `.standard` is one of these.
 	public init() {
 		self.pageSize = .a4
 		self.margins = Margins(top: 64, leading: 64, bottom: 64, trailing: 64)

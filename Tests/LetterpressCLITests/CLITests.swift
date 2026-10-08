@@ -179,4 +179,42 @@ struct LetterpressCLITests {
 			#expect(text.contains("/BaseFont /Times-Bold"))
 		}
 	}
+
+	// MARK: overflow
+
+	/// markdown whose single list item is far taller than the text column: the
+	/// one shape no break policy can help, because an item is never split.
+	private static let overflowing = "- " + String(repeating: "overflowing words ", count: 1000) + "\n"
+
+	@Test("content that overflows the page box exits non-zero and names the page")
+	func overflowFails() throws {
+		try withScratch(markdown: Self.overflowing) { source, directory in
+			let pdf = "\(directory)/over.pdf"
+			let result = try run([source, "-o", pdf])
+			#expect(result.exit != 0)
+			#expect(result.output.contains("overflows the page box"))
+			#expect(result.output.contains("page 1"))
+			// the artifact is still written — the exit code is what marks it
+			#expect(FileManager.default.fileExists(atPath: pdf))
+		}
+	}
+
+	@Test("the summary counts the overflow it reports")
+	func overflowIsCounted() throws {
+		try withScratch(markdown: Self.overflowing) { source, directory in
+			let result = try run([source, "-o", "\(directory)/over.pdf"])
+			#expect(result.stdout.contains("\"warnings\":"))
+			#expect(!result.stdout.contains("\"warnings\":0"))
+		}
+	}
+
+	@Test("a document that fits reports zero warnings and exits zero")
+	func cleanDocument() throws {
+		try withScratch(markdown: "# Title\n\n\(String(repeating: "body text ", count: 400))\n") { source, directory in
+			let result = try run([source, "-o", "\(directory)/long.pdf"])
+			#expect(result.exit == 0)
+			#expect(result.stdout.contains("\"warnings\":0"))
+			#expect(result.stdout.contains("\"pages\":"))
+		}
+	}
 }

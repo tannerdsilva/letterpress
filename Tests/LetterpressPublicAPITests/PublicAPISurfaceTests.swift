@@ -59,6 +59,29 @@ extension Mark {
 	}
 }
 
+// MARK: - a breakable mark written from the public surface alone
+
+/// a band that breaks in half, so the paginator can continue it — the consumer
+/// spelling of the `Mark.split` contract, using the shared line arithmetic.
+struct HalfBand: Mark {
+	let height: Double
+
+	func write(to renderer: inout Renderer) {
+		renderer.append("0 0 10 \(PDFNumber(height)) re\n")
+	}
+
+	func sizeThatFits(_ proposal: ProposedSize, in context: inout MeasureContext) -> Size {
+		Size(width: 10, height: height)
+	}
+
+	func split(available: Double, width: Double, in context: inout MeasureContext) -> (fits: AnyMark, runover: AnyMark)? {
+		guard linesFitting(
+			count: 2, available: available, lineHeight: height / 2,
+			orphans: 1, widows: 1) != nil else { return nil }
+		return (AnyMark(HalfBand(height: height / 2)), AnyMark(HalfBand(height: height / 2)))
+	}
+}
+
 // MARK: - the seam is open
 
 @Suite struct PublicAPISurfaceTests {
@@ -108,5 +131,26 @@ extension Mark {
 		let text = stream(document)
 		#expect(text.contains("/BaseFont /Courier"))
 		#expect(text.contains("/BaseFont /Helvetica"))
+	}
+
+	@Test("a consumer mark breaks across pages through the public contract")
+	func consumerMarkSplits() {
+		// an 80pt content box and a 160pt band: the mark must hand back two
+		// 80pt pieces rather than overflow a single page.
+		let document = PDFDocument {
+			Galley(
+				.custom(width: 200, height: 100),
+				margins: Margins(top: 10, leading: 10, bottom: 10, trailing: 10)
+			) {
+				HalfBand(height: 160)
+			}
+		}
+		#expect(document.pages.count == 2)
+		#expect(Galley(
+			.custom(width: 200, height: 100),
+			margins: Margins(top: 10, leading: 10, bottom: 10, trailing: 10)
+		) {
+			HalfBand(height: 160)
+		}.pagination().warnings.isEmpty)
 	}
 }

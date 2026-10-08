@@ -17,6 +17,7 @@ public struct Renderer: Sendable {
 	/// pdf's y-up space.
 	public let pageHeight: Double
 
+	/// create a renderer for a page `pageHeight` points tall.
 	public init(pageHeight: Double) {
 		self.pageHeight = pageHeight
 	}
@@ -94,12 +95,18 @@ public struct Renderer: Sendable {
 
 /// the current text attributes a `Text`/`Paragraph` reads while writing.
 public struct TextState: Sendable {
+	/// the active font face.
 	public var font: Font = .helvetica
+	/// the active point size.
 	public var size: Double = 12
+	/// the current text anchor (the top-left of the first line).
 	public var position: Point = Point(x: 0, y: 0)
+	/// the horizontal alignment about `position`.
 	public var alignment: TextAlignment = .leading
+	/// the line advance as a multiple of `size`.
 	public var lineHeight: Double = 1.25
 
+	/// create default text state: Helvetica at 12pt.
 	public init() {}
 }
 
@@ -112,8 +119,10 @@ public struct TextState: Sendable {
 /// `alignment` are write-side concerns and are ignored here — measurement
 /// is position-independent by design.
 public struct MeasureContext: Sendable {
+	/// the text style the measured marks resolve against.
 	public var text: TextState = TextState()
 
+	/// create a measure context under a given text style.
 	public init(text: TextState = TextState()) {
 		self.text = text
 	}

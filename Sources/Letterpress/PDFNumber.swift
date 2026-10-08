@@ -8,14 +8,18 @@ import Foundation
 /// honors the process locale (a German locale emits ','), so pdf numbers are
 /// formatted with integer arithmetic instead — deterministic on every host.
 public struct PDFNumber: Sendable, Hashable, CustomStringConvertible {
+	/// the value being formatted.
 	public let value: Double
+	/// the maximum number of fractional digits kept.
 	public let decimals: Int
 
+	/// wrap `value` to format with at most `decimals` fractional digits.
 	public init(_ value: Double, decimals: Int = 2) {
 		self.value = value
 		self.decimals = decimals
 	}
 
+	/// the pdf-grammar spelling of `value` — `.` separator, trailing zeros trimmed.
 	public var description: String {
 		Self.fixed(value, decimals)
 	}

@@ -4,11 +4,16 @@ import Foundation
 
 /// a page's dimensions in points (1/72 inch).
 public enum PageSize: Sendable, Hashable {
+	/// ISO A4 (595.28 × 841.89 pt).
 	case a4
+	/// US Letter (612 × 792 pt).
 	case letter
+	/// ISO A5 (419.53 × 595.28 pt).
 	case a5
+	/// an arbitrary size in points.
 	case custom(width: Double, height: Double)
 
+	/// the dimensions in points as `(width, height)`.
 	public var size: (width: Double, height: Double) {
 		switch self {
 		case .a4: return (595.28, 841.89)
@@ -18,7 +23,9 @@ public enum PageSize: Sendable, Hashable {
 		}
 	}
 
+	/// the page width in points.
 	public var width: Double { size.width }
+	/// the page height in points.
 	public var height: Double { size.height }
 }
 
@@ -33,10 +40,14 @@ public enum PageSize: Sendable, Hashable {
 ///
 /// a page can carry a full-bleed background color via `.background(_:)`.
 public struct PDFPage: Mark, Sendable {
+	/// the page dimensions.
 	public let size: PageSize
+	/// the marks painted on the page, in order.
 	public let marks: [any Mark]
+	/// an optional full-bleed color painted before the marks.
 	public var background: Color?
 
+	/// create a page; `content` is the page's marks.
 	public init(_ size: PageSize = .a4, @MarkBuilder content: () -> [any Mark]) {
 		self.size = size
 		self.marks = content()
@@ -70,32 +81,42 @@ public struct PDFPage: Mark, Sendable {
 
 // MARK: - PageBuilder
 
+/// builds a page list from a block: pages pass through, galleys paginate.
 @resultBuilder
 public enum PageBuilder {
+	/// flatten the block's pages.
 	public static func buildBlock(_ components: [PDFPage]...) -> [PDFPage] {
 		components.flatMap { $0 }
 	}
+	/// take a single page.
 	public static func buildExpression(_ expression: PDFPage) -> [PDFPage] {
 		[expression]
 	}
+	/// expand a galley into the physical pages its content needs.
 	public static func buildExpression(_ expression: Galley) -> [PDFPage] {
 		expression.paginate()
 	}
+	/// pass a pre-built page list through.
 	public static func buildExpression(_ expression: [PDFPage]) -> [PDFPage] {
 		expression
 	}
+	/// treat a missing `if` branch as empty.
 	public static func buildOptional(_ component: [PDFPage]?) -> [PDFPage] {
 		component ?? []
 	}
+	/// take the `if` branch.
 	public static func buildEither(first: [PDFPage]) -> [PDFPage] {
 		first
 	}
+	/// take the `else` branch.
 	public static func buildEither(second: [PDFPage]) -> [PDFPage] {
 		second
 	}
+	/// flatten a `for` loop's pages.
 	public static func buildArray(_ components: [[PDFPage]]) -> [PDFPage] {
 		components.flatMap { $0 }
 	}
+	/// pass an availability-gated block through.
 	public static func buildLimitedAvailability(_ component: [PDFPage]) -> [PDFPage] {
 		component
 	}
@@ -118,10 +139,17 @@ public enum PageBuilder {
 ///     }
 ///     let bytes = document.render()
 public struct PDFDocument: Sendable {
+	/// the document's pages, in order.
 	public let pages: [PDFPage]
 
+	/// create a document; `content` is the page list.
+	///
+	/// a document always has at least one page: an empty page list — a galley
+	/// with no content, or margins that leave no content box — yields one
+	/// blank `.a4` page rather than a structurally invalid pdf.
 	public init(@PageBuilder content: () -> [PDFPage]) {
-		self.pages = content()
+		let pages = content()
+		self.pages = pages.isEmpty ? [PDFPage(.a4) { }] : pages
 	}
 
 	/// assemble the document into pdf bytes.

@@ -8,14 +8,16 @@
 /// fenced code (``` / ~~~, with an info word), blockquotes, unordered and
 /// ordered lists with one level of nesting per indent step, thematic breaks.
 /// supported inlines — `code spans`, `**strong**`, `*emphasis*`, `_inner_`,
-/// `***both***`, `[links](url)`, `![alt](url)`, backslash escapes, a handful of
+/// `***both***`, `[links](url)`, !\[alt\](url), backslash escapes, a handful of
 /// html entities, and hard breaks (two trailing spaces or a trailing `\`).
 ///
 /// deliberately out of scope: tables, footnotes, reference links, task lists,
 /// autolinks, raw html passthrough, and lazy blockquote continuation.
 public struct BasicMarkdownParser: MarkdownParser {
+	/// create the parser.
 	public init() {}
 
+	/// parse `source` using the supported subset.
 	public func parse(_ source: String) -> MarkdownDocument {
 		let normalized = normalizeNewlines(source)
 		let lines = normalized.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)

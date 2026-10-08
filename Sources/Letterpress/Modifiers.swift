@@ -24,8 +24,10 @@ private func restatePath<Content: Mark>(content: Content, to renderer: inout Ren
 /// fills the wrapped mark's path after it paints. use on closed shapes
 /// (`Rect`, `Ellipse`, `Polygon`).
 public struct FillModifier: MarkModifier, PathTransparentModifier {
+	/// the fill color.
 	public let color: Color
 
+	/// create a fill modifier.
 	public init(color: Color) {
 		self.color = color
 	}
@@ -49,9 +51,12 @@ public struct FillModifier: MarkModifier, PathTransparentModifier {
 /// the reported size includes the stroke bleed (half the width on every
 /// side), so containers space for a stroked mark correctly.
 public struct StrokeModifier: MarkModifier, PathTransparentModifier {
+	/// the stroke color.
 	public let color: Color
+	/// the stroke width; the measured size grows by this on each axis.
 	public let width: Double
 
+	/// create a stroke modifier.
 	public init(color: Color, width: Double) {
 		self.color = color
 		self.width = width
@@ -83,8 +88,10 @@ public struct StrokeModifier: MarkModifier, PathTransparentModifier {
 /// sets the fill (nonstroking) color without painting anything — the text
 /// mark paints itself. use on `Text`/`Paragraph`.
 public struct ForegroundColorModifier: MarkModifier {
+	/// the text color.
 	public let color: Color
 
+	/// create a text-color modifier.
 	public init(color: Color) {
 		self.color = color
 	}
@@ -105,9 +112,12 @@ public struct ForegroundColorModifier: MarkModifier {
 
 /// sets the font and size for text marks.
 public struct FontModifier: MarkModifier {
+	/// the face to set.
 	public let font: Font
+	/// the point size to set.
 	public let size: Double
 
+	/// create a font modifier.
 	public init(font: Font, size: Double) {
 		self.font = font
 		self.size = size
@@ -131,12 +141,29 @@ public struct FontModifier: MarkModifier {
 		context.text = saved
 		return result
 	}
+
+	/// split under this modifier's font, and re-apply the font to both pieces —
+	/// the split measures and draws as the whole mark would.
+	public func split<Content: Mark>(content: Content, available: Double, width: Double, in context: inout MeasureContext) -> (fits: AnyMark, runover: AnyMark)? {
+		let saved = context.text
+		context.text.font = font
+		context.text.size = size
+		let pieces = content.split(available: available, width: width, in: &context)
+		context.text = saved
+		guard let pieces else { return nil }
+		return (
+			AnyMark(ModifiedMark(content: pieces.fits, modifier: self)),
+			AnyMark(ModifiedMark(content: pieces.runover, modifier: self))
+		)
+	}
 }
 
 /// sets the anchor point (top-left) for text marks.
 public struct PositionModifier: MarkModifier {
+	/// the anchor point (the top-left of the first line).
 	public let point: Point
 
+	/// create a position modifier.
 	public init(point: Point) {
 		self.point = point
 	}
@@ -151,8 +178,10 @@ public struct PositionModifier: MarkModifier {
 
 /// sets the horizontal text alignment.
 public struct AlignmentModifier: MarkModifier {
+	/// the alignment to set.
 	public let alignment: TextAlignment
 
+	/// create an alignment modifier.
 	public init(alignment: TextAlignment) {
 		self.alignment = alignment
 	}
@@ -167,8 +196,10 @@ public struct AlignmentModifier: MarkModifier {
 
 /// sets the line-height multiple for multi-line text.
 public struct LineHeightModifier: MarkModifier {
+	/// the line advance as a multiple of the font size.
 	public let factor: Double
 
+	/// create a line-height modifier.
 	public init(factor: Double) {
 		self.factor = factor
 	}
@@ -189,6 +220,19 @@ public struct LineHeightModifier: MarkModifier {
 		context.text = saved
 		return result
 	}
+
+	/// split under this modifier's line height, and re-apply it to both pieces.
+	public func split<Content: Mark>(content: Content, available: Double, width: Double, in context: inout MeasureContext) -> (fits: AnyMark, runover: AnyMark)? {
+		let saved = context.text
+		context.text.lineHeight = factor
+		let pieces = content.split(available: available, width: width, in: &context)
+		context.text = saved
+		guard let pieces else { return nil }
+		return (
+			AnyMark(ModifiedMark(content: pieces.fits, modifier: self)),
+			AnyMark(ModifiedMark(content: pieces.runover, modifier: self))
+		)
+	}
 }
 
 // MARK: - frame modifier
@@ -203,15 +247,24 @@ public struct LineHeightModifier: MarkModifier {
 /// `vertical` position the content inside it. when the box is smaller than
 /// the content, the content overflows visibly.
 public struct FrameModifier: MarkModifier {
+	/// the minimum width; the box never shrinks below it.
 	public let minWidth: Double?
+	/// the width used when the incoming width proposal is unconstrained.
 	public let idealWidth: Double?
+	/// the maximum width; the box never grows past it. the wrap width for `Paragraph`.
 	public let maxWidth: Double?
+	/// the minimum height; the box never shrinks below it.
 	public let minHeight: Double?
+	/// the height used when the incoming height proposal is unconstrained.
 	public let idealHeight: Double?
+	/// the maximum height; the box never grows past it.
 	public let maxHeight: Double?
+	/// horizontal placement of content inside the box.
 	public let alignment: TextAlignment
+	/// vertical placement of content inside the box.
 	public let vertical: VerticalAlignment
 
+	/// create a frame; every bound defaults to `nil` (unconstrained).
 	public init(
 		minWidth: Double? = nil, idealWidth: Double? = nil, maxWidth: Double? = nil,
 		minHeight: Double? = nil, idealHeight: Double? = nil, maxHeight: Double? = nil,
@@ -283,6 +336,19 @@ public struct FrameModifier: MarkModifier {
 		content: Content, proposal: ProposedSize, in context: inout MeasureContext
 	) -> Size {
 		box(for: content.sizeThatFits(resolvedProposal(for: proposal), in: &context))
+	}
+
+	/// split the content at the width this frame resolves, so a piece wraps
+	/// exactly where the unframed mark wrapped.
+	public func split<Content: Mark>(content: Content, available: Double, width: Double, in context: inout MeasureContext) -> (fits: AnyMark, runover: AnyMark)? {
+		let resolved = resolvedProposal(for: ProposedSize(width: width, height: nil)).width ?? width
+		guard let pieces = content.split(available: available, width: resolved, in: &context) else {
+			return nil
+		}
+		return (
+			AnyMark(ModifiedMark(content: pieces.fits, modifier: self)),
+			AnyMark(ModifiedMark(content: pieces.runover, modifier: self))
+		)
 	}
 }
 
@@ -372,5 +438,48 @@ extension Mark {
 			minWidth: minWidth, idealWidth: idealWidth, maxWidth: maxWidth,
 			minHeight: minHeight, idealHeight: idealHeight, maxHeight: maxHeight,
 			alignment: alignment, vertical: vertical))
+	}
+}
+
+// MARK: - break control
+
+/// sets a page-break policy on the wrapped mark: it draws and measures
+/// exactly like the mark it wraps, and the paginator reads it through
+/// `BreakControlling`.
+public struct BreakModifier: MarkModifier {
+	/// start the wrapped mark at the top of a fresh page.
+	public let breaksBefore: Bool
+	/// keep the wrapped mark on the same page as the mark that follows it.
+	public let keepsWithNext: Bool
+
+	/// create a break modifier; every policy is off by default.
+	public init(breaksBefore: Bool = false, keepsWithNext: Bool = false) {
+		self.breaksBefore = breaksBefore
+		self.keepsWithNext = keepsWithNext
+	}
+
+	public func apply<Content: Mark>(content: Content, to renderer: inout Renderer) {
+		content.write(to: &renderer)
+	}
+}
+
+extension ModifiedMark: BreakControlling where M == BreakModifier {
+	public var breaksBefore: Bool { modifier.breaksBefore }
+	public var keepsWithNext: Bool { modifier.keepsWithNext }
+}
+
+extension Mark {
+	/// start this mark at the top of a fresh page.
+	///
+	/// a break on the flow's first child is a no-op: the page is already
+	/// empty.
+	public func pageBreak() -> ModifiedMark<Self, BreakModifier> {
+		ModifiedMark(content: self, modifier: BreakModifier(breaksBefore: true))
+	}
+
+	/// keep this mark on the same page as the mark that follows it, so a
+	/// heading cannot be stranded at the foot of a page.
+	public func keepWithNext() -> ModifiedMark<Self, BreakModifier> {
+		ModifiedMark(content: self, modifier: BreakModifier(keepsWithNext: true))
 	}
 }

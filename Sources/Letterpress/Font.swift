@@ -42,17 +42,29 @@ public struct Font: Sendable, Hashable {
 
 	// MARK: the standard 14
 
+	/// Helvetica (regular).
 	public static let helvetica = Font("Helvetica", advances: FontMetrics.helvetica, highAdvances: FontMetrics.helveticaHigh)
+	/// Helvetica-Bold.
 	public static let helveticaBold = Font("Helvetica-Bold", advances: FontMetrics.helveticaBold, highAdvances: FontMetrics.helveticaBoldHigh)
+	/// Helvetica-Oblique (metric-identical to Helvetica).
 	public static let helveticaOblique = Font("Helvetica-Oblique", advances: FontMetrics.helvetica, highAdvances: FontMetrics.helveticaHigh)
+	/// Helvetica-BoldOblique (metric-identical to Helvetica-Bold).
 	public static let helveticaBoldOblique = Font("Helvetica-BoldOblique", advances: FontMetrics.helveticaBold, highAdvances: FontMetrics.helveticaBoldHigh)
+	/// Times-Roman.
 	public static let times = Font("Times-Roman", advances: FontMetrics.timesRoman, highAdvances: FontMetrics.timesRomanHigh)
+	/// Times-Bold.
 	public static let timesBold = Font("Times-Bold", advances: FontMetrics.timesBold, highAdvances: FontMetrics.timesBoldHigh)
+	/// Times-Italic.
 	public static let timesItalic = Font("Times-Italic", advances: FontMetrics.timesItalic, highAdvances: FontMetrics.timesItalicHigh)
+	/// Times-BoldItalic.
 	public static let timesBoldItalic = Font("Times-BoldItalic", advances: FontMetrics.timesBoldItalic, highAdvances: FontMetrics.timesBoldItalicHigh)
+	/// Courier (monospaced).
 	public static let courier = Font("Courier", advances: FontMetrics.courier, highAdvances: FontMetrics.courierHigh)
+	/// Courier-Bold.
 	public static let courierBold = Font("Courier-Bold", advances: FontMetrics.courier, highAdvances: FontMetrics.courierHigh)
+	/// Courier-Oblique.
 	public static let courierOblique = Font("Courier-Oblique", advances: FontMetrics.courier, highAdvances: FontMetrics.courierHigh)
+	/// Courier-BoldOblique; mono is uniform, so all four faces share metrics.
 	public static let courierBoldOblique = Font("Courier-BoldOblique", advances: FontMetrics.courier, highAdvances: FontMetrics.courierHigh)
 
 	// MARK: measurement

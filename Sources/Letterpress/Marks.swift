@@ -71,6 +71,85 @@ internal func wrappedLines(_ text: String, frameWidth: Double, font: Font, size:
 	return lines
 }
 
+/// the number of leading lines of a `count`-line run that fit in `available`
+/// points, kept inside the orphan and widow minima.
+///
+/// this is the arithmetic every line-based `Mark.split` shares, and the
+/// primitive a custom breakable mark needs: `nil` when the run cannot usefully
+/// break — it already fits, the orphan minimum does not fit, or the break
+/// would strand fewer than `widows` lines on the next page. a break always
+/// leaves at least one line on each side, which is why a single-line run is
+/// unbreakable.
+public func linesFitting(count: Int, available: Double, lineHeight: Double, orphans: Int, widows: Int) -> Int? {
+	guard lineHeight > 0, count > 1 else { return nil }
+	let capacity = Int((available / lineHeight + 1e-9).rounded(.down))
+	guard capacity >= 1, capacity < count else { return nil }
+	// never strand fewer than `widows` lines at the top of the next page.
+	let take = min(capacity, count - max(widows, 1))
+	guard take >= max(orphans, 1), take < count else { return nil }
+	return take
+}
+
+/// split a run of pre-wrapped strings at `linesFitting`'s index.
+internal func splitLines(
+	_ lines: [String], available: Double, lineHeight: Double, orphans: Int, widows: Int
+) -> (head: [String], tail: [String])? {
+	guard let take = linesFitting(
+		count: lines.count, available: available, lineHeight: lineHeight,
+		orphans: orphans, widows: widows) else { return nil }
+	return (Array(lines[0..<take]), Array(lines[take...]))
+}
+
+// MARK: - LineRun
+
+/// a run of pre-wrapped lines — the piece a split hands back.
+///
+/// draws exactly these lines with the ambient text style, so a piece stays
+/// styled by whatever context surrounded the mark it came from. a run splits
+/// again on the next page, which is what lets one paragraph span many pages.
+struct LineRun: Mark {
+	let lines: [String]
+	let orphans: Int
+	let widows: Int
+
+	init(lines: [String], orphans: Int = 2, widows: Int = 2) {
+		self.lines = lines
+		self.orphans = orphans
+		self.widows = widows
+	}
+
+	func write(to renderer: inout Renderer) {
+		let state = renderer.text
+		emitTextLines(
+			lines,
+			font: state.font,
+			size: state.size,
+			x: state.position.x,
+			topY: state.position.y,
+			alignment: state.alignment,
+			lineHeight: state.lineHeight,
+			renderer: &renderer
+		)
+	}
+
+	func sizeThatFits(_ proposal: ProposedSize, in context: inout MeasureContext) -> Size {
+		let style = context.text
+		let width = lines.map { style.font.width(of: $0, size: style.size) }.max() ?? 0
+		return Size(width: width, height: Double(lines.count) * style.size * style.lineHeight)
+	}
+
+	func split(available: Double, width: Double, in context: inout MeasureContext) -> (fits: AnyMark, runover: AnyMark)? {
+		let style = context.text
+		guard let parts = splitLines(
+			lines, available: available, lineHeight: style.size * style.lineHeight,
+			orphans: orphans, widows: widows) else { return nil }
+		return (
+			AnyMark(LineRun(lines: parts.head, orphans: orphans, widows: widows)),
+			AnyMark(LineRun(lines: parts.tail, orphans: orphans, widows: widows))
+		)
+	}
+}
+
 // MARK: - Text
 
 /// a single run of text, positioned and styled by modifiers.
@@ -84,8 +163,10 @@ internal func wrappedLines(_ text: String, frameWidth: Double, font: Font, size:
 /// the given point (center / trailing) using the measured text width. an
 /// embedded '\n' starts a new line below the previous one.
 public struct Text: Mark {
+	/// the literal text; `\n` starts a new line.
 	public let content: String
 
+	/// create a single-run text mark.
 	public init(_ content: String) {
 		self.content = content
 	}
@@ -112,6 +193,19 @@ public struct Text: Mark {
 		let height = Double(lines.count) * style.size * style.lineHeight
 		return Size(width: width, height: height)
 	}
+
+	/// break between authored lines; a single-line `Text` is atomic.
+	public func split(available: Double, width: Double, in context: inout MeasureContext) -> (fits: AnyMark, runover: AnyMark)? {
+		let style = context.text
+		let lines = content.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+		guard let parts = splitLines(
+			lines, available: available, lineHeight: style.size * style.lineHeight,
+			orphans: 1, widows: 1) else { return nil }
+		return (
+			AnyMark(LineRun(lines: parts.head, orphans: 1, widows: 1)),
+			AnyMark(LineRun(lines: parts.tail, orphans: 1, widows: 1))
+		)
+	}
 }
 
 // MARK: - Paragraph
@@ -127,10 +221,19 @@ public struct Text: Mark {
 /// lines break on spaces to fit `.frame(maxWidth:)`; without a frame the text is
 /// one line per '\n'. `lineHeight` is a multiple of the font size.
 public struct Paragraph: Mark {
+	/// the source text, wrapped at write time.
 	public let content: String
+	/// the fewest lines a break may leave at the bottom of a page.
+	public let orphans: Int
+	/// the fewest lines a break may carry to the top of the next page.
+	public let widows: Int
 
-	public init(_ content: String) {
+	/// create a paragraph; `orphans`/`widows` default to the two-line
+	/// convention and are clamped to at least one line.
+	public init(_ content: String, orphans: Int = 2, widows: Int = 2) {
 		self.content = content
+		self.orphans = max(orphans, 1)
+		self.widows = max(widows, 1)
 	}
 
 	public func write(to renderer: inout Renderer) {
@@ -157,6 +260,21 @@ public struct Paragraph: Mark {
 		let height = Double(lines.count) * style.size * style.lineHeight
 		return Size(width: width, height: height)
 	}
+
+	/// break between wrapped lines, so a long paragraph continues on the next
+	/// page instead of being clipped. the orphan and widow minima keep a break
+	/// from stranding a lone line at either end.
+	public func split(available: Double, width: Double, in context: inout MeasureContext) -> (fits: AnyMark, runover: AnyMark)? {
+		let style = context.text
+		let lines = wrappedLines(content, frameWidth: width, font: style.font, size: style.size)
+		guard let parts = splitLines(
+			lines, available: available, lineHeight: style.size * style.lineHeight,
+			orphans: orphans, widows: widows) else { return nil }
+		return (
+			AnyMark(LineRun(lines: parts.head, orphans: orphans, widows: widows)),
+			AnyMark(LineRun(lines: parts.tail, orphans: orphans, widows: widows))
+		)
+	}
 }
 
 // MARK: - Rect
@@ -169,12 +287,18 @@ public struct Paragraph: Mark {
 ///
 /// `x`,`y` are the top-left corner, `width`/`height` extend right and down.
 public struct Rect: PathMark {
+	/// the left edge.
 	public let x: Double
+	/// the top edge.
 	public let y: Double
+	/// the width, extending right.
 	public let width: Double
+	/// the height, extending down.
 	public let height: Double
+	/// the corner radius in points; `0` draws square corners.
 	public let cornerRadius: Double
 
+	/// create a rectangle at `(x, y)`; `cornerRadius` is clamped to `>= 0`.
 	public init(x: Double, y: Double, width: Double, height: Double, cornerRadius: Double = 0) {
 		self.x = x
 		self.y = y
@@ -213,11 +337,16 @@ public struct Rect: PathMark {
 /// `x`,`y` are the top-left of the bounding box; equal `width`/`height` make
 /// a circle.
 public struct Ellipse: PathMark {
+	/// the left edge of the bounding box.
 	public let x: Double
+	/// the top edge of the bounding box.
 	public let y: Double
+	/// the bounding-box width; equal to `height` makes a circle.
 	public let width: Double
+	/// the bounding-box height.
 	public let height: Double
 
+	/// create an ellipse inside the bounding box at `(x, y)`.
 	public init(x: Double, y: Double, width: Double, height: Double) {
 		self.x = x
 		self.y = y
@@ -256,9 +385,12 @@ public struct Ellipse: PathMark {
 ///     Line(from: Point(x: 72, y: 420), to: Point(x: 500, y: 420))
 ///         .stroke(.coral, width: 3)
 public struct Line: PathMark {
+	/// the start point.
 	public let from: Point
+	/// the end point.
 	public let to: Point
 
+	/// create a line between two points.
 	public init(from: Point, to: Point) {
 		self.from = from
 		self.to = to
@@ -288,8 +420,10 @@ public struct Line: PathMark {
 ///         Point(x: 172, y: 560),
 ///     ]).fill(.green)
 public struct Polygon: PathMark {
+	/// the polygon's corners, in draw order.
 	public let vertices: [Point]
 
+	/// create a polygon through `vertices`, in draw order.
 	public init(_ vertices: [Point]) {
 		self.vertices = vertices
 	}

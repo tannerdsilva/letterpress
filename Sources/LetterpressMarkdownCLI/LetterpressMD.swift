@@ -21,6 +21,7 @@ struct LetterpressMD: ParsableCommand {
 		discussion: """
 			Reads markdown from a file, or from stdin when the input is `-`, and
 			writes a paginated pdf. Progress is reported on stdout as compact json.
+			Content that cannot fit the page box is reported on stderr and exits 1.
 			""",
 		version: "0.1.0"
 	)
@@ -59,7 +60,8 @@ struct LetterpressMD: ParsableCommand {
 		style.typeface = typeface.typeface
 
 		let document = MarkdownDocument(parsing: source)
-		let pdf = document.pdfDocument(style: style)
+		let result = document.pagination(style: style)
+		let pdf = PDFDocument { result.pages }
 		let bytes = pdf.render()
 		let destination = resolveDestination()
 
@@ -69,19 +71,26 @@ struct LetterpressMD: ParsableCommand {
 			throw LetterpressMDError("cannot write '\(destination)'")
 		}
 
-		guard !quiet else { return }
-		let summary = Summary(
-			input: input,
-			output: destination,
-			title: document.title,
-			blocks: document.blocks.count,
-			pages: pdf.pages.count,
-			bytes: bytes.count
-		)
-		let encoder = JSONEncoder()
-		encoder.outputFormatting = [.sortedKeys]
-		if let data = try? encoder.encode(summary) {
-			print(String(decoding: data, as: UTF8.self))
+		if !quiet {
+			let summary = Summary(
+				input: input,
+				output: destination,
+				title: document.title,
+				blocks: document.blocks.count,
+				pages: pdf.pages.count,
+				bytes: bytes.count,
+				warnings: result.warnings.count
+			)
+			let encoder = JSONEncoder()
+			encoder.outputFormatting = [.sortedKeys]
+			if let data = try? encoder.encode(summary) {
+				print(String(decoding: data, as: UTF8.self))
+			}
+		}
+
+		// the pdf is written either way: the exit code is what says it is wrong.
+		if let failure = LetterpressMDError.overflow(result.warnings) {
+			throw failure
 		}
 	}
 
@@ -146,11 +155,23 @@ struct LetterpressMDError: Error, CustomStringConvertible {
 	init(_ description: String) {
 		self.description = description
 	}
+
+	/// the failure a page box the content does not fit deserves — or nothing,
+	/// when every mark landed inside its page.
+	///
+	/// the pdf is still written before this fires: the file is a faithful
+	/// rendering of the overflow, and the exit code is what says it is wrong.
+	static func overflow(_ warnings: [PaginationWarning]) -> LetterpressMDError? {
+		guard !warnings.isEmpty else { return nil }
+		let named = warnings.prefix(3).map(\.description).joined(separator: "; ")
+		let rest = warnings.count > 3 ? " (+\(warnings.count - 3) more)" : ""
+		return LetterpressMDError("content overflows the page box — \(named)\(rest)")
+	}
 }
 
 // MARK: - summary
 
-/// the compact json line the tool prints on success.
+/// the compact json line the tool prints before it reports overflow.
 struct Summary: Encodable {
 	let input: String
 	let output: String
@@ -158,4 +179,6 @@ struct Summary: Encodable {
 	let blocks: Int
 	let pages: Int
 	let bytes: Int
+	/// how many flow marks ran past the content box; non-zero means exit 1.
+	let warnings: Int
 }

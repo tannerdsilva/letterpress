@@ -5,8 +5,11 @@ import Letterpress
 /// the three base-14 families a markdown document draws from, each with its
 /// four faces selected from the bold/italic bits an inline run carries.
 public enum MarkdownTypeface: String, Sendable, Hashable, CaseIterable {
+	/// Helvetica.
 	case sans
+	/// Times.
 	case serif
+	/// Courier.
 	case mono
 
 	/// the font face for the given emphasis.
@@ -162,6 +165,63 @@ struct RichText: Mark {
 	func sizeThatFits(_ proposal: ProposedSize, in context: inout MeasureContext) -> Size {
 		Size(width: width, height: Double(lines().count) * size * lineHeight)
 	}
+
+	/// break between laid-out lines, so a long paragraph continues on the next
+	/// page instead of overflowing. every word keeps its own font and paint,
+	/// because a piece carries the placed words themselves.
+	func split(available: Double, width: Double, in context: inout MeasureContext) -> (fits: AnyMark, runover: AnyMark)? {
+		let laid = lines()
+		let step = size * lineHeight
+		guard let take = linesFitting(
+			count: laid.count, available: available, lineHeight: step,
+			orphans: 2, widows: 2) else { return nil }
+		return (
+			AnyMark(PlacedLines(lines: Array(laid[0..<take]), size: size, lineHeight: lineHeight)),
+			AnyMark(PlacedLines(lines: Array(laid[take...]), size: size, lineHeight: lineHeight))
+		)
+	}
+}
+
+// MARK: - PlacedLines
+
+/// already-laid-out rich-text lines — the piece a `RichText` split hands back.
+///
+/// it draws exactly the lines it was given, so a piece keeps every word's font
+/// and colour, and it breaks again on the next page.
+struct PlacedLines: Mark {
+	let lines: [[RichText.Placed]]
+	let size: Double
+	let lineHeight: Double
+
+	func write(to renderer: inout Renderer) {
+		for (index, line) in lines.enumerated() {
+			let top = Double(index) * size * lineHeight
+			for placed in line {
+				Text(placed.text)
+					.font(placed.font, size: size)
+					.foregroundColor(placed.color)
+					.at(x: placed.x, y: top)
+					.write(to: &renderer)
+			}
+		}
+	}
+
+	func sizeThatFits(_ proposal: ProposedSize, in context: inout MeasureContext) -> Size {
+		let extent = lines.flatMap { $0 }
+			.map { $0.x + $0.font.width(of: $0.text, size: size) }
+			.max() ?? 0
+		return Size(width: extent, height: Double(lines.count) * size * lineHeight)
+	}
+
+	func split(available: Double, width: Double, in context: inout MeasureContext) -> (fits: AnyMark, runover: AnyMark)? {
+		guard let take = linesFitting(
+			count: lines.count, available: available, lineHeight: size * lineHeight,
+			orphans: 2, widows: 2) else { return nil }
+		return (
+			AnyMark(PlacedLines(lines: Array(lines[0..<take]), size: size, lineHeight: lineHeight)),
+			AnyMark(PlacedLines(lines: Array(lines[take...]), size: size, lineHeight: lineHeight))
+		)
+	}
 }
 
 // MARK: - CodeBlock
@@ -219,5 +279,88 @@ struct CodeBlock: Mark {
 
 	func sizeThatFits(_ proposal: ProposedSize, in context: inout MeasureContext) -> Size {
 		Size(width: width, height: height)
+	}
+
+	/// break between wrapped lines, so a code block longer than a page
+	/// continues instead of overflowing. each piece keeps its own tinted
+	/// panel, so both read as the same block.
+	func split(available: Double, width: Double, in context: inout MeasureContext) -> (fits: AnyMark, runover: AnyMark)? {
+		let lines = wrapped()
+		let usable = available - padding * 2
+		guard usable > 0, let take = linesFitting(
+			count: lines.count, available: usable, lineHeight: lineHeight,
+			orphans: 1, widows: 1) else { return nil }
+		return (
+			AnyMark(panel(lines[0..<take])),
+			AnyMark(panel(lines[take...]))
+		)
+	}
+
+	private func panel(_ lines: ArraySlice<String>) -> CodeBlock {
+		CodeBlock(
+			text: lines.joined(separator: "\n"),
+			width: width,
+			codeTypeface: codeTypeface,
+			size: size,
+			color: color,
+			background: background
+		)
+	}
+}
+
+// MARK: - Quote
+
+/// a block quote: a tinted bar beside the quoted blocks.
+///
+/// breakable — it splits its quoted content and redraws the bar for the piece
+/// that fits, so a quote longer than a page continues with its bar intact
+/// instead of overflowing.
+struct Quote: Mark {
+	let children: [any Mark]
+	let barWidth: Double
+	let indent: Double
+	let color: Color
+	let trailing: Double
+
+	private var body: VStack {
+		VStack(alignment: .leading, spacing: 0) { children }
+	}
+
+	/// the whole quote — bar, quoted content, trailing rhythm — assembled from
+	/// the pieces, so measurement and drawing agree by construction.
+	private func assembled(in context: inout MeasureContext) -> any Mark {
+		let extent = body.sizeThatFits(ProposedSize(width: nil, height: nil), in: &context)
+		return VStack(alignment: .leading, spacing: 0) {
+			HStack(alignment: .top, spacing: 0) {
+				Rect(x: 0, y: 0, width: barWidth, height: extent.height).fill(color)
+				Gap(width: max(indent - barWidth, 0))
+				body
+			}
+			Gap(height: trailing)
+		}
+	}
+
+	func write(to renderer: inout Renderer) {
+		var context = MeasureContext(text: renderer.text)
+		assembled(in: &context).write(to: &renderer)
+	}
+
+	func sizeThatFits(_ proposal: ProposedSize, in context: inout MeasureContext) -> Size {
+		var local = context
+		let size = assembled(in: &local).sizeThatFits(proposal, in: &context)
+		return size
+	}
+
+	func split(available: Double, width: Double, in context: inout MeasureContext) -> (fits: AnyMark, runover: AnyMark)? {
+		let bodyWidth = max(width - indent, 1)
+		guard let pieces = body.split(available: available, width: bodyWidth, in: &context) else {
+			return nil
+		}
+		// the piece that fits keeps the bar but not the trailing rhythm (the
+		// page ends there); the runover keeps both.
+		return (
+			AnyMark(Quote(children: [pieces.fits], barWidth: barWidth, indent: indent, color: color, trailing: 0)),
+			AnyMark(Quote(children: [pieces.runover], barWidth: barWidth, indent: indent, color: color, trailing: trailing))
+		)
 	}
 }

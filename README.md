@@ -107,10 +107,20 @@ HStack(alignment: .center) {
 - a child inside a container must not carry its own `.at` — the container
   places it
 - `ZStack` layers children back-to-front at the container's origin
-- flow pagination: a `Galley` breaks one logical body across physical pages
-  at sibling boundaries — spacing never leaks across a break, each physical
-  page is an ordinary `PDFPage` (same objects, resources, determinism), and
-  a child taller than the content box overflows visibly rather than splitting
+- flow pagination: a `Galley` breaks one logical body across physical pages —
+  at sibling boundaries *and* inside any child that can be continued (`Text`,
+  `Paragraph`, `RichText`, `CodeBlock`, a `VStack`), so a paragraph or code
+  block longer than a page flows on rather than being clipped. spacing never
+  leaks across a break, each physical page is an ordinary `PDFPage` (same
+  objects, resources, determinism), and widow/orphan minima are honoured
+- a child that *cannot* break — a lone `Text` line, a full-bleed `Rect`, a
+  single list item taller than the column — takes its own page when that
+  helps and otherwise overflows visibly; it is drawn, never dropped, and
+  `pagination()` reports a `PaginationWarning` for it
+- `.pageBreak()` forces the next child onto a fresh page, `.keepWithNext()`
+  keeps a mark with the flow that follows it (a heading is never stranded at
+  a page foot), and `Galley.furniture` stamps headers, footers, and page
+  numbers onto every physical page with its number and the total
 - measurement is exact: the same afm widths drive wrapping, alignment, and
   auto layout, so a stacked column is byte-identical on every render
 
@@ -127,7 +137,13 @@ HStack(alignment: .center) {
   `ZStack` layering, and a `.frame(maxWidth:maxHeight:)` proposal — every
   mark measures itself exactly (afm-width text, shape geometry)
 - flow pagination: a `Galley` measures a body at the column width, packs it
-  into the content box, and materializes one plain physical page per bucket
+  into the content box, splits the children that can be continued (at line
+  boundaries, honouring widow/orphan minima), and materializes one plain
+  physical page per bucket
+- a document always has at least one page: an empty flow, or margins that
+  consume the whole page, render one blank page rather than a zero-count tree
+  no reader will open. negative `spacing` clamps to zero instead of stacking
+  content on top of itself
 - `Color` with hex/int initializers and `.opacity(_:)` — transparency renders
   through shared, deduplicated `/ExtGState` resources
 - winansi text encoding: the content stream stays 7-bit — latin-1 letters and
@@ -179,12 +195,13 @@ let bytes = document.render(style: .standard)   // or .pdfDocument() for the pag
 - the CLI is a `ParsableCommand`: `--help`/`--version` are free, a bad value or
   unknown flag exits 64 with usage, an unreadable input exits 1 with a message,
   and `--quiet`/`--no-quiet` is a proper flag pair. it prints a compact json
-  summary (`{"blocks":…,"pages":…,"bytes":…}`) so it composes with other tools
+  summary (`{"blocks":…,"pages":…,"bytes":…,"warnings":…}`) so it composes
+  with other tools, and exits non-zero when a mark could not be fitted
 
 ## verify
 
 ```bash
-swift test                              # 155 tests, 21 suites
+swift test                              # 183 tests, 23 suites
 swift run LetterpressExample            # writes letterpress-example.pdf
 swift run letterpress-md Examples/markdown-sample.md -o sample.pdf
 pdfinfo/pdftotext/pdftoppm letterpress-example.pdf   # independent parser check
@@ -211,8 +228,37 @@ measurement makes it fail — and it skips (visibly) where poppler is absent.
   scalar is actually written as (no kerning) — the single exception is `€`,
   which the urw afms do not carry and which is therefore measured as `?`;
   line position uses an 0.8em baseline approximation
+- an *unbreakable* mark taller than the content box still overflows. it is
+  drawn, never dropped, and reported through `PaginationWarning` (the CLI
+  prints it and exits non-zero), so the outcome is visible rather than a
+  quietly clipped page. the shapes are the ones the paginator may not divide:
+  a lone `Text` line, an image-sized `Rect`, a single list item taller than
+  the column. anything with an interior can be continued — a list splits
+  between its items, a blockquote between its children, a stack between its
+  children, and text itself between lines
+- `.frame` with no proposal hugs and lets content overflow: overflow is legal
+  for a raw `PDFPage`, and only a `Galley` treats the content box as a hard
+  boundary worth splitting against
 
 ## docs
 
-api docs are inline `///` comments; this README is the reference for the
-architecture, the y-down coordinate law, auto layout, and pagination.
+the api docs are inline `///` comments on every public symbol, plus a docc
+catalog per module — `Sources/Letterpress/Letterpress.docc` and
+`Sources/LetterpressMarkdown/LetterpressMarkdown.docc` — each with a curated
+landing page and an architecture article. the package deliberately takes no
+`swift-docc-plugin` dependency, so build them with `docc` directly:
+
+```bash
+sg=$(mktemp -d)                     # one module's graph per dir
+swift build --target Letterpress \
+  -Xswiftc -emit-symbol-graph -Xswiftc -emit-symbol-graph-dir -Xswiftc "$sg"
+xcrun docc convert Sources/Letterpress/Letterpress.docc \
+  --additional-symbol-graph-dir "$sg" -o /tmp/Letterpress.doccarchive \
+  --warnings-as-errors
+```
+
+swap the target and the catalog path for `LetterpressMarkdown`. emit each
+module's graph into its own directory — `docc` refuses a build whose inputs
+describe more than one main module. both catalogs convert with zero warnings
+under `--warnings-as-errors`. this README stays the reference for the y-down
+coordinate law, auto layout, and pagination.

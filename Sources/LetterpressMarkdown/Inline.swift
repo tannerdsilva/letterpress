@@ -7,13 +7,17 @@
 /// an option set rather than three booleans so a run's styling is one value
 /// that composes (bold+italic) and compares cleanly.
 public struct InlineTraits: OptionSet, Sendable, Hashable {
+	/// the raw option-set bits.
 	public let rawValue: Int
 
+	/// create traits from raw option-set bits.
 	public init(rawValue: Int) {
 		self.rawValue = rawValue
 	}
 
+	/// `**bold**` emphasis.
 	public static let bold = InlineTraits(rawValue: 1 << 0)
+	/// `*italic*` emphasis.
 	public static let italic = InlineTraits(rawValue: 1 << 1)
 	/// a `code span` — rendered in the monospace typeface.
 	public static let code = InlineTraits(rawValue: 1 << 2)
@@ -34,6 +38,7 @@ public struct InlineRun: Sendable, Hashable {
 	/// the target of a `[text](url)` link, when the run came from one.
 	public var url: String?
 
+	/// create a run carrying `text` under `traits`, linked to `url`.
 	public init(_ text: String, traits: InlineTraits = [], url: String? = nil) {
 		self.text = text
 		self.traits = traits

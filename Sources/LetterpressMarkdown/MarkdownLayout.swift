@@ -8,19 +8,34 @@ extension MarkdownDocument {
 	/// the whole document is one `Galley`: it measures each top-level block at
 	/// the text-column width and breaks between blocks, so a long document
 	/// spills onto as many physical pages as it needs with no manual paging.
+	/// paragraphs, headings, lists, code blocks, and quotes continue across
+	/// page boundaries rather than being clipped.
 	public func pdfDocument(style: MarkdownStyle = .standard) -> PDFDocument {
-		let composer = BlockComposer(style: style, columnWidth: style.contentWidth)
-		let marks: [any Mark] = blocks.map { composer.mark(for: $0) }
-		return PDFDocument {
-			Galley(style.pageSize, margins: style.margins, spacing: 0) {
-				marks
-			}
-		}
+		PDFDocument { galley(style: style) }
+	}
+
+	/// typeset this document and report whatever the page box could not hold.
+	///
+	/// the same expansion `pdfDocument` performs, with the overflow report
+	/// kept: `warnings` is empty for a document whose content fits. it is
+	/// non-empty only for material no break policy can help — content nested
+	/// where a break is meaningless, such as a single list item taller than
+	/// the whole text column.
+	public func pagination(style: MarkdownStyle = .standard) -> (pages: [PDFPage], warnings: [PaginationWarning]) {
+		galley(style: style).pagination()
 	}
 
 	/// render this document straight to pdf bytes under `style`.
 	public func render(style: MarkdownStyle = .standard) -> [UInt8] {
 		pdfDocument(style: style).render()
+	}
+
+	private func galley(style: MarkdownStyle) -> Galley {
+		let composer = BlockComposer(style: style, columnWidth: style.contentWidth)
+		let marks: [any Mark] = blocks.map { composer.mark(for: $0) }
+		return Galley(style.pageSize, margins: style.margins, spacing: 0) {
+			marks
+		}
 	}
 }
 
@@ -64,6 +79,7 @@ struct BlockComposer {
 			text(emphasised, size: style.headingSize(level), lineHeight: 1.25, color: style.headingColor)
 			Gap(height: style.blockSpacing * 0.6)
 		}
+		.keepWithNext()
 	}
 
 	private func paragraph(_ runs: [InlineRun]) -> any Mark {
@@ -145,20 +161,12 @@ struct BlockComposer {
 		let indent: Double = 12
 		let barWidth: Double = 2.5
 		let inner = BlockComposer(style: style, columnWidth: max(columnWidth - indent, 1))
-		let content = VStack(alignment: .leading, spacing: 0) {
-			blocks.map { inner.mark(for: $0) }
-		}
-		// the bar must span the quoted content, so measure it first.
-		var context = MeasureContext()
-		let height = content.sizeThatFits(ProposedSize(width: nil, height: nil), in: &context).height
-
-		return VStack(alignment: .leading, spacing: 0) {
-			HStack(alignment: .top, spacing: 0) {
-				Rect(x: 0, y: 0, width: barWidth, height: height).fill(style.barColor)
-				Gap(width: indent - barWidth)
-				content
-			}
-			Gap(height: style.blockSpacing)
-		}
+		return Quote(
+			children: blocks.map { inner.mark(for: $0) },
+			barWidth: barWidth,
+			indent: indent,
+			color: style.barColor,
+			trailing: style.blockSpacing
+		)
 	}
 }

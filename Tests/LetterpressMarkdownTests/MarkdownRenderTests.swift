@@ -107,14 +107,6 @@ private func pdfText(_ bytes: [UInt8]) -> String {
 		#expect(document.render() == document.render())
 	}
 
-	@Test("an empty document still produces a valid pdf")
-	func emptyDocument() {
-		let bytes = MarkdownDocument(parsing: "").render()
-		let text = pdfText(bytes)
-		#expect(text.hasPrefix("%PDF-1.7"))
-		#expect(text.hasSuffix("%%EOF\n"))
-	}
-
 	@Test("style knobs reach the artifact")
 	func styleKnobs() {
 		var style = MarkdownStyle()

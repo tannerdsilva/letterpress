@@ -20,8 +20,10 @@ public protocol FlexibleMark: Mark {
 /// `.frame(maxWidth:)`, the sole proposal producer. outside a stack a
 /// spacer measures `minimumLength` by 0 and paints nothing.
 public struct Spacer: FlexibleMark {
+	/// the extent kept when no leftover space is distributed.
 	public let minimumLength: Double
 
+	/// create a spacer; `minimumLength` is the extent it keeps.
 	public init(minimumLength: Double = 0) {
 		self.minimumLength = minimumLength
 	}
@@ -147,15 +149,27 @@ internal func layoutFlex(
 /// `alignment` lines children up along the cross axis; `spacing` may be
 /// negative to overlap (positive gaps between every pair).
 public struct VStack: Mark {
+	/// cross-axis (horizontal) alignment of the children.
 	public let alignment: TextAlignment
+	/// vertical points between adjacent children; may be negative to overlap.
 	public let spacing: Double
+	/// the children, in declaration order.
 	public let children: [any Mark]
 
+	/// create a vertical stack; `content` is the child list.
 	public init(alignment: TextAlignment = .leading, spacing: Double = 0,
 				@MarkBuilder content: () -> [any Mark]) {
 		self.alignment = alignment
 		self.spacing = spacing
 		self.children = content()
+	}
+
+	/// adopt an existing child list — used where a container builds its own
+	/// children (measurement helpers, split pieces).
+	internal init(alignment: TextAlignment, spacing: Double, children: [any Mark]) {
+		self.alignment = alignment
+		self.spacing = spacing
+		self.children = children
 	}
 
 	public func write(to renderer: inout Renderer) {
@@ -184,6 +198,54 @@ public struct VStack: Mark {
 			crossOffset: crossOffset, proposal: proposal, context: &context).size
 	}
 
+	/// break between children, and — when one child alone still overflows —
+	/// inside that child. both pieces are stacks, so a broken column keeps its
+	/// alignment and its spacing on either side of the break.
+	public func split(available: Double, width: Double, in context: inout MeasureContext) -> (fits: AnyMark, runover: AnyMark)? {
+		guard !children.isEmpty, available > 0 else { return nil }
+		let proposal = ProposedSize(width: width, height: nil)
+
+		var head: [any Mark] = []
+		var used = 0.0
+		var splitPiece: (fits: AnyMark, runover: AnyMark)?
+		var cut = 0
+
+		for (index, child) in children.enumerated() {
+			let gap = head.isEmpty ? 0 : spacing
+			let height = child.sizeThatFits(proposal, in: &context).height
+			if used + gap + height <= available {
+				head.append(child)
+				used += gap + height
+				cut = index + 1
+				continue
+			}
+			// this child does not fit whole — can it break?
+			let room = available - used - gap
+			if room > 0, let pieces = child.split(available: room, width: width, in: &context) {
+				let fitsHeight = pieces.fits.sizeThatFits(proposal, in: &context).height
+				if fitsHeight > 0, fitsHeight <= room + 0.001 {
+					splitPiece = pieces
+					cut = index
+				}
+			}
+			break
+		}
+
+		var tail: [any Mark]
+		if let splitPiece {
+			head.append(splitPiece.fits)
+			tail = [splitPiece.runover]
+			tail.append(contentsOf: children[(cut + 1)...])
+		} else {
+			tail = Array(children[cut...])
+		}
+		guard !head.isEmpty, !tail.isEmpty else { return nil }
+		return (
+			AnyMark(VStack(alignment: alignment, spacing: spacing, children: head)),
+			AnyMark(VStack(alignment: alignment, spacing: spacing, children: tail))
+		)
+	}
+
 	private var crossOffset: (_ containerExtent: Double, _ childExtent: Double) -> Double {
 		switch alignment {
 		case .leading: return { _, _ in 0 }
@@ -207,10 +269,14 @@ public struct VStack: Mark {
 /// `alignment` lines children up vertically (top/center/bottom); `spacing`
 /// may be negative to overlap.
 public struct HStack: Mark {
+	/// cross-axis (vertical) alignment of the children.
 	public let alignment: VerticalAlignment
+	/// horizontal points between adjacent children; may be negative to overlap.
 	public let spacing: Double
+	/// the children, in declaration order.
 	public let children: [any Mark]
 
+	/// create a horizontal stack; `content` is the child list.
 	public init(alignment: VerticalAlignment = .top, spacing: Double = 0,
 				@MarkBuilder content: () -> [any Mark]) {
 		self.alignment = alignment
@@ -269,8 +335,10 @@ public struct HStack: Mark {
 /// measured under the same proposal it is written with — so a width-dependent
 /// child (a `Paragraph`) reports the height it actually draws.
 public struct ZStack: Mark {
+	/// the stacked children, painted in declaration order.
 	public let children: [any Mark]
 
+	/// create a back-to-front stack; `content` is the child list.
 	public init(@MarkBuilder content: () -> [any Mark]) {
 		self.children = content()
 	}

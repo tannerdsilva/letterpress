@@ -10,6 +10,7 @@ public struct ListItem: Sendable, Hashable {
 	/// the blocks that make up this item (a paragraph, a nested list, ...).
 	public var blocks: [Block]
 
+	/// create an item from explicit blocks.
 	public init(blocks: [Block]) {
 		self.blocks = blocks
 	}
@@ -47,8 +48,10 @@ public indirect enum Block: Sendable, Hashable {
 
 /// a parsed markdown document: an ordered list of top-level blocks.
 public struct MarkdownDocument: Sendable, Hashable {
+	/// the document's top-level blocks.
 	public var blocks: [Block]
 
+	/// create a document from explicit blocks.
 	public init(blocks: [Block]) {
 		self.blocks = blocks
 	}
