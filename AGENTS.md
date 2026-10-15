@@ -20,9 +20,6 @@ and a cli on top of it.
   compact json summary.
 - `LetterpressExample` — the demo document, rendered to `letterpress-example.pdf`.
 
-the sibling of `no-webui`: same architecture, different wire format. instead of
-html/css it writes the pdf object model by hand.
-
 ## 2. the laws of the land
 
 these are load-bearing. a change that breaks one of them is wrong even if every
