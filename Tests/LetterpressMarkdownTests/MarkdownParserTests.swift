@@ -208,6 +208,29 @@ import LetterpressMarkdown
 		#expect(joined.contains("`"))
 	}
 
+	@Test("strikethrough resolves into a trait and nests with emphasis")
+	func strikethrough() {
+		let document = MarkdownDocument(parsing: "a ~~gone~~ b ~~**shouted**~~ c")
+		guard case .paragraph(let runs) = document.blocks[0] else { Issue.record("not a paragraph"); return }
+		let struck = runs.first { $0.text == "gone" }
+		#expect(struck?.traits.contains(.strikethrough) == true)
+		// the tildes are markup and never reach the page.
+		#expect(!runs.contains { $0.text.contains("~") })
+		let nested = runs.first { $0.text == "shouted" }
+		#expect(nested?.traits.contains(.strikethrough) == true)
+		#expect(nested?.traits.contains(.bold) == true)
+	}
+
+	@Test("a lone or unmatched tilde stays literal")
+	func tildeStaysLiteral() {
+		let document = MarkdownDocument(parsing: "approx ~5 and an ~~ unmatched strike")
+		guard case .paragraph(let runs) = document.blocks[0] else { Issue.record("not a paragraph"); return }
+		let joined = runs.map(\.text).joined()
+		#expect(joined.contains("~5"))
+		#expect(joined.contains("~~"))
+		#expect(runs.allSatisfy { !$0.traits.contains(.strikethrough) })
+	}
+
 	// MARK: document
 
 	@Test("the title is the first level-1 heading")

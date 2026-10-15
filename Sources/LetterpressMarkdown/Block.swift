@@ -1,3 +1,5 @@
+import Letterpress
+
 // the block layer: the document model a markdown source parses into.
 
 // MARK: - ListItem
@@ -21,6 +23,41 @@ public struct ListItem: Sendable, Hashable {
 	}
 }
 
+// MARK: - table cells
+
+/// one cell of a table: the inline runs its text parses into.
+public typealias TableCell = [InlineRun]
+
+/// one table row: its cells, left to right.
+public typealias TableRow = [TableCell]
+
+// MARK: - Table
+
+/// a pipe table: a header row, a per-column alignment, and body rows.
+///
+/// cells reuse the inline model — a cell is a run list, exactly like a
+/// paragraph — so emphasis, code spans, and links inside a cell parse and
+/// render the same way they do everywhere else. `alignments` reuses
+/// `TextAlignment`, the framework's one horizontal-alignment vocabulary.
+public struct Table: Sendable, Hashable {
+	/// the header row's cells, one run list per column.
+	public var header: TableRow
+	/// the horizontal alignment of each column; `leading` fills any gap.
+	public var alignments: [TextAlignment]
+	/// the body rows, top to bottom.
+	public var rows: [TableRow]
+
+	/// create a table from a header, its column alignments, and its rows.
+	public init(header: TableRow, alignments: [TextAlignment] = [], rows: [TableRow] = []) {
+		self.header = header
+		self.alignments = alignments
+		self.rows = rows
+	}
+
+	/// the number of columns the header defines.
+	public var columnCount: Int { header.count }
+}
+
 // MARK: - Block
 
 /// one block-level unit of a markdown document.
@@ -40,6 +77,8 @@ public indirect enum Block: Sendable, Hashable {
 	case quote([Block])
 	/// a fenced code block (``` or ~~~); `language` is the info word.
 	case code(language: String?, text: String)
+	/// a pipe table: a header row, per-column alignment, and body rows.
+	case table(Table)
 	/// a thematic break (`---`, `***`, `___`).
 	case rule
 }

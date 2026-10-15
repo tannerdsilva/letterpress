@@ -176,7 +176,22 @@ struct LetterpressCLITests {
 			#expect(result.exit == 0)
 			let text = String(decoding: try Data(contentsOf: URL(fileURLWithPath: pdf)), as: UTF8.self)
 			#expect(text.contains("/MediaBox [0 0 612 792]"))
-			#expect(text.contains("/BaseFont /Times-Bold"))
+			// the body face follows the flag.
+			#expect(text.contains("/BaseFont /Times-Roman"))
+		}
+	}
+
+	@Test("with no style flag the cli keeps the theme's own defaults")
+	func styleDefaultsStand() throws {
+		try withScratch(markdown: "# Title\n\nbody\n") { source, directory in
+			let pdf = "\(directory)/default.pdf"
+			let result = try run([source, "-o", pdf])
+			#expect(result.exit == 0)
+			let text = String(decoding: try Data(contentsOf: URL(fileURLWithPath: pdf)), as: UTF8.self)
+			// the theme sets serif prose under sans heads; an unset flag must
+			// leave that alone rather than pin the body back to a sans.
+			#expect(text.contains("/BaseFont /Times-Roman"), "the cli overrode the theme's body face")
+			#expect(text.contains("/BaseFont /Helvetica-Bold"), "the heading face left the theme")
 		}
 	}
 

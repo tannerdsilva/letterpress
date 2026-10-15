@@ -1,17 +1,23 @@
-// block parsing: fenced code, headings, rules, blockquotes, lists, paragraphs.
+import Letterpress
+
+// block parsing: fenced code, headings, rules, blockquotes, lists, tables,
+// paragraphs.
 
 // MARK: - BasicMarkdownParser
 
 /// the shipped parser: a focused, dependency-free subset of markdown.
 ///
 /// supported blocks — atx (`#`) and setext (`===`/`---`) headings, paragraphs,
-/// fenced code (``` / ~~~, with an info word), blockquotes, unordered and
-/// ordered lists with one level of nesting per indent step, thematic breaks.
+/// fenced code (``` / ~~~, with an info word), blockquotes, ordered and
+/// unordered lists with one level of nesting per indent step, pipe tables
+/// (GFM-style: a header row, a `| --- |` delimiter row with optional `:` alignment
+/// markers, then body rows), thematic breaks.
 /// supported inlines — `code spans`, `**strong**`, `*emphasis*`, `_inner_`,
-/// `***both***`, `[links](url)`, !\[alt\](url), backslash escapes, a handful of
-/// html entities, and hard breaks (two trailing spaces or a trailing `\`).
+/// `***both***`, `~~struck through~~`, `[links](url)`, !\[alt\](url), backslash
+/// escapes, a handful of html entities, and hard breaks (two trailing spaces or
+/// a trailing `\`).
 ///
-/// deliberately out of scope: tables, footnotes, reference links, task lists,
+/// deliberately out of scope: footnotes, reference links, task lists,
 /// autolinks, raw html passthrough, and lazy blockquote continuation.
 public struct BasicMarkdownParser: MarkdownParser {
 	/// create the parser.
@@ -121,6 +127,7 @@ private struct BlockParser {
 			if syntax.isRule(line) { index += 1; blocks.append(.rule); continue }
 			if let block = parseBlockquote() { blocks.append(block); continue }
 			if let block = parseList() { blocks.append(block); continue }
+			if let block = parseTable() { blocks.append(block); continue }
 			if let block = parseParagraph() { blocks.append(block); continue }
 			// unreachable in practice; advance so a surprise cannot spin.
 			index += 1
@@ -205,6 +212,38 @@ private struct BlockParser {
 		}
 
 		return ordered ? .ordered(start: first.start, items) : .bullets(items)
+	}
+
+	// MARK: tables
+
+	/// a GFM pipe table: a header line containing a `|`, a delimiter row
+	/// (`| --- | :--: |`), then body rows. the delimiter row's cell count and
+	/// each cell's `:` placement fix the column count and alignment.
+	private mutating func parseTable() -> Block? {
+		guard index + 1 < lines.count, lines[index].contains("|") else { return nil }
+		guard let alignments = delimiterAlignments(lines[index + 1]) else { return nil }
+		let headerCells = splitTableRow(lines[index])
+		guard !headerCells.isEmpty, headerCells.count == alignments.count else { return nil }
+
+		index += 2
+		var rows: [TableRow] = []
+		while index < lines.count, !isBlank(lines[index]), lines[index].contains("|") {
+			var cells = splitTableRow(lines[index])
+			// a ragged row is padded or trimmed to the header's column count.
+			if cells.count < headerCells.count {
+				cells.append(contentsOf: Array(repeating: "", count: headerCells.count - cells.count))
+			} else if cells.count > headerCells.count {
+				cells = Array(cells.prefix(headerCells.count))
+			}
+			rows.append(cells.map(InlineParser.parse))
+			index += 1
+		}
+
+		return .table(Table(
+			header: headerCells.map(InlineParser.parse),
+			alignments: alignments,
+			rows: rows
+		))
 	}
 
 	// MARK: paragraphs
@@ -320,6 +359,84 @@ func dropColumns(_ line: String, _ columns: Int) -> String {
 
 func isBlank(_ line: String) -> Bool {
 	line.allSatisfy { $0 == " " || $0 == "\t" }
+}
+
+// MARK: - table lexing
+
+/// the column alignments a delimiter row declares, or `nil` when the line is
+/// not a delimiter row (so the caller falls through to paragraph handling).
+///
+/// a delimiter cell is `-`, `:-`, `-:`, or `:-:` (spaces around it trimmed);
+/// `:` at both ends centres, a trailing `:` right-aligns, and no `:` is the
+/// default left alignment.
+func delimiterAlignments(_ line: String) -> [TextAlignment]? {
+	let cells = splitTableRow(line)
+	guard !cells.isEmpty else { return nil }
+	var alignments: [TextAlignment] = []
+	for cell in cells {
+		let text = trim(cell)
+		guard !text.isEmpty else { return nil }
+		var body = Substring(text)
+		var leading = false
+		var trailing = false
+		if body.first == ":" { leading = true; body = body.dropFirst() }
+		if body.last == ":" { trailing = true; body = body.dropLast() }
+		guard !body.isEmpty, body.allSatisfy({ $0 == "-" }) else { return nil }
+		alignments.append(leading && trailing ? .center : trailing ? .trailing : .leading)
+	}
+	return alignments
+}
+
+/// split a table line into trimmed cell strings.
+///
+/// a leading and a trailing `|` are optional; a `\|` is an escaped literal pipe
+/// (kept for the inline parser to unescape); a `|` inside a `` code span `` does
+/// not split the row.
+func splitTableRow(_ line: String) -> [String] {
+	let characters = Array(line)
+	var cells: [String] = []
+	var current = ""
+	var inCode = false
+	var codeRun = 0
+	var i = 0
+
+	while i < characters.count {
+		let character = characters[i]
+
+		// an escaped pipe is a literal, not a separator.
+		if character == "\\", i + 1 < characters.count, characters[i + 1] == "|" {
+			current.append(character)
+			current.append(characters[i + 1])
+			i += 2
+			continue
+		}
+
+		// a backtick run toggles code-span state so `a|b` never splits.
+		if character == "`" {
+			var run = 0
+			while i + run < characters.count, characters[i + run] == "`" { run += 1 }
+			if inCode, run == codeRun { inCode = false } else if !inCode { inCode = true; codeRun = run }
+			current.append(contentsOf: String(repeating: "`", count: run))
+			i += run
+			continue
+		}
+
+		if character == "|", !inCode {
+			cells.append(current)
+			current = ""
+			i += 1
+			continue
+		}
+
+		current.append(character)
+		i += 1
+	}
+	cells.append(current)
+
+	// drop the empty cell a leading or trailing `|` produces.
+	if let first = cells.first, trim(first).isEmpty { cells.removeFirst() }
+	if let last = cells.last, trim(last).isEmpty { cells.removeLast() }
+	return cells.map(trim)
 }
 
 /// drop a leading `>` and one following space from a blockquote line.

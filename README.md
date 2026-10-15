@@ -184,24 +184,39 @@ let bytes = document.render(style: .standard)   // or .pdfDocument() for the pag
 
 - `BasicMarkdownParser` (a `MarkdownParser`) handles atx/setext headings,
   paragraphs, fenced code, blockquotes, ordered and unordered lists (nested by
-  indent), thematic breaks, `**bold**`, `*italic*`, `***both***`, `` `code` ``,
-  `[links](url)`, `![alt](url)`, backslash escapes, entities, and hard breaks
+  indent), pipe tables (GFM-style: a header row, a `| --- |` delimiter row with
+  optional `:` alignment markers, then body rows), thematic breaks, `**bold**`,
+  `*italic*`, `***both***`, `~~struck through~~`, `` `code` ``, `[links](url)`,
+  `![alt](url)`, backslash escapes, entities, and hard breaks
 - blocks compose into `Mark`s and flow through one `Galley`, so a long document
   paginates with no manual page management
 - `MarkdownStyle` carries the whole look — page geometry, typefaces, sizes,
-  colours, rhythm — in one value type
+  colours, rhythm — in one value type. the shipped default is a letterpress
+  scheme: prose sets in a serif on a measured column that holds a line near
+  eighty-five characters, structure sets in a sans that never competes with
+  it, and one accent ink is spent only where it carries meaning (the accent
+  segment of the `h1` rule, `h3` heads, list markers, quote bars, the table
+  header rule, the code panel's edge, the thematic break's diamond). every
+  other separator is a hairline, the heading scale separates all six levels,
+  and a running folio rides every page — the document title in tracked
+  uppercase at the leading edge, the page number over the total at the
+  trailing edge. prose sets flush, opened out to the measure with a stretch
+  limit, so a line that would need more than `justificationLimit` times the
+  natural word space is left ragged rather than torn into rivers
 - inline runs are laid out word by word using only the exporter's public
   surface, so the markdown layer adds no API to `Letterpress`
 - the CLI is a `ParsableCommand`: `--help`/`--version` are free, a bad value or
   unknown flag exits 64 with usage, an unreadable input exits 1 with a message,
-  and `--quiet`/`--no-quiet` is a proper flag pair. it prints a compact json
+  and `--quiet`/`--no-quiet` is a proper flag pair. `--page-size` and
+  `--typeface` are optional and replace the theme's own default only when they
+  are given, so the cli never silently overrides the shipped look. it prints a compact json
   summary (`{"blocks":…,"pages":…,"bytes":…,"warnings":…}`) so it composes
   with other tools, and exits non-zero when a mark could not be fitted
 
 ## verify
 
 ```bash
-swift test                              # 183 tests, 23 suites
+swift test                              # 213 tests, 26 suites
 swift run LetterpressExample            # writes letterpress-example.pdf
 swift run letterpress-md Examples/markdown-sample.md -o sample.pdf
 pdfinfo/pdftotext/pdftoppm letterpress-example.pdf   # independent parser check
@@ -215,6 +230,12 @@ page, asks `pdftotext -bbox` where the glyphs actually landed, and fails if a ru
 overlaps the word the library placed after it. it is what catches a metrics
 regression — reverting either the per-face tables or the per-glyph cp1252
 measurement makes it fail — and it skips (visibly) where poppler is absent.
+
+the `markdown visual check` suite measures the layer the same way: that a list
+marker sits on its item's baseline rather than below it, that a lone punctuation
+mark closes a line instead of opening one, and that nothing draws below the
+running folio. `MarkdownStyleTests` pins the rest of the theme in the artifact's
+own bytes.
 
 ## limitations (v1, by design)
 
@@ -233,9 +254,13 @@ measurement makes it fail — and it skips (visibly) where poppler is absent.
   prints it and exits non-zero), so the outcome is visible rather than a
   quietly clipped page. the shapes are the ones the paginator may not divide:
   a lone `Text` line, an image-sized `Rect`, a single list item taller than
-  the column. anything with an interior can be continued — a list splits
-  between its items, a blockquote between its children, a stack between its
-  children, and text itself between lines
+  the column, and a table row of a single line taller than the whole box.
+  anything with an interior can be continued — a list splits between its
+  items, a blockquote between its children, a stack between its children,
+  text splits between its lines, and a table breaks between its rows or,
+  when one row is taller than the page, inside that row at a cell line
+  boundary. every piece repeats the header and carries the whole table's
+  column geometry, so the columns never shuffle across a break
 - `.frame` with no proposal hugs and lets content overflow: overflow is legal
   for a raw `PDFPage`, and only a `Galley` treats the content box as a hard
   boundary worth splitting against

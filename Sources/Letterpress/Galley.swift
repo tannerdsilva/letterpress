@@ -266,6 +266,19 @@ public struct Galley: Sendable {
 			buckets.append(current)
 		}
 
+		// a block bakes its trailing rhythm into its own height, so the last
+		// block's gap can spill past its content and open a page that holds
+		// nothing visible. drop such a trailing page — a blank final page is
+		// never wanted — keeping the first page so the tree stays valid.
+		if buckets.count > 1, let last = buckets.last {
+			var onlySpacing = true
+			for item in last where item.mark.sizeThatFits(proposal, in: &measure).width > 0.001 {
+				onlySpacing = false
+				break
+			}
+			if onlySpacing { buckets.removeLast() }
+		}
+
 		let total = buckets.count
 		let pages = buckets.enumerated().map { index, bucket -> PDFPage in
 			var page = PDFPage(size) {

@@ -21,6 +21,8 @@ public struct InlineTraits: OptionSet, Sendable, Hashable {
 	public static let italic = InlineTraits(rawValue: 1 << 1)
 	/// a `code span` — rendered in the monospace typeface.
 	public static let code = InlineTraits(rawValue: 1 << 2)
+	/// `~~struck through~~` — a rule drawn through the run.
+	public static let strikethrough = InlineTraits(rawValue: 1 << 3)
 }
 
 // MARK: - InlineRun

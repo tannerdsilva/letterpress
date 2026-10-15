@@ -11,6 +11,16 @@ private func pdfText(_ bytes: [UInt8]) -> String {
 	String(decoding: bytes, as: UTF8.self)
 }
 
+/// the rectangle operations a rendered document emits, one per line, so two
+/// documents can be differenced by the rules one drew and the other did not.
+private func rectLines(_ text: String) -> Set<String> {
+	var lines: Set<String> = []
+	for line in text.components(separatedBy: "\n") where line.hasSuffix(" re") {
+		lines.insert(line)
+	}
+	return lines
+}
+
 @Suite struct MarkdownRenderTests {
 	@Test("a document with every supported block renders to a page")
 	func rendersAllBlocks() {
@@ -43,12 +53,17 @@ private func pdfText(_ bytes: [UInt8]) -> String {
 		#expect(text.hasSuffix("%%EOF\n"))
 	}
 
-	@Test("a heading renders bold in the heading colour and body text in the body font")
+	@Test("a heading renders bold in the heading face and body text in the body face")
 	func fontsAreSelected() {
 		let document = MarkdownDocument(parsing: "# Heading\n\nplain body text")
 		let text = pdfText(document.render())
-		#expect(text.contains("/BaseFont /Helvetica-Bold"))
-		#expect(text.contains("/BaseFont /Helvetica"))
+		// the theme pairs a sans head with a serif column; read both faces
+		// from the theme rather than naming one, or the assertion can pass on a
+		// face the document never drew (`/Helvetica` is a prefix of
+		// `/Helvetica-Bold`).
+		let style = MarkdownStyle.standard
+		#expect(text.contains("/BaseFont /\(style.headingFont(1).baseName)"))
+		#expect(text.contains("/BaseFont /\(style.typeface.font(bold: false, italic: false).baseName)"))
 		#expect(text.contains("(Heading) Tj"))
 	}
 
@@ -56,8 +71,10 @@ private func pdfText(_ bytes: [UInt8]) -> String {
 	func inlineFaces() {
 		let document = MarkdownDocument(parsing: "plain **bold** *italic* `code`")
 		let text = pdfText(document.render())
-		#expect(text.contains("/BaseFont /Helvetica-Bold"))
-		#expect(text.contains("/BaseFont /Helvetica-Oblique"))
+		// each emphasis bit selects its own face of the body typeface.
+		let body = MarkdownStyle.standard.typeface
+		#expect(text.contains("/BaseFont /\(body.font(bold: true, italic: false).baseName)"))
+		#expect(text.contains("/BaseFont /\(body.font(bold: false, italic: true).baseName)"))
 		#expect(text.contains("/BaseFont /Courier"))
 	}
 
@@ -109,12 +126,71 @@ private func pdfText(_ bytes: [UInt8]) -> String {
 
 	@Test("style knobs reach the artifact")
 	func styleKnobs() {
-		var style = MarkdownStyle()
-		style.pageSize = .letter
-		style.typeface = .serif
 		let document = MarkdownDocument(parsing: "# Title\n\nbody")
-		let text = pdfText(document.render(style: style))
-		#expect(text.contains("/MediaBox [0 0 612 792]"))
-		#expect(text.contains("/BaseFont /Times-Bold"))
+
+		var letter = MarkdownStyle()
+		letter.pageSize = .letter
+		#expect(pdfText(document.render(style: letter)).contains("/MediaBox [0 0 612 792]"))
+
+		// the body face follows the typeface knob, for every face it offers.
+		for typeface in MarkdownTypeface.allCases {
+			var style = MarkdownStyle()
+			style.typeface = typeface
+			let face = typeface.font(bold: false, italic: false).baseName
+			#expect(
+				pdfText(document.render(style: style)).contains("/BaseFont /\(face)"),
+				"the \(typeface) body face did not reach the artifact")
+		}
+	}
+
+	@Test("a struck run draws one rule, as wide as the glyphs it runs through")
+	func strikethroughDraws() {
+		let style = MarkdownStyle.standard
+		let plain = pdfText(MarkdownDocument(parsing: "withdrawn").render())
+		let struck = pdfText(MarkdownDocument(parsing: "~~withdrawn~~").render())
+		#expect(struck.contains("(withdrawn) Tj"))
+		#expect(!struck.contains("(~"))
+		// the strike adds exactly one rule to the page, and it spans the
+		// advance of the word it strikes — no more, no less.
+		let added = rectLines(struck).subtracting(rectLines(plain))
+		#expect(added.count == 1)
+		let fields = (added.first ?? "").components(separatedBy: " ")
+		#expect(fields.count == 5)
+		let advance = style.typeface.font(bold: false, italic: false)
+			.width(of: "withdrawn", size: style.bodySize)
+		// the page writes its numbers to two decimals, so the rule matches the
+		// advance to within that rounding and no further.
+		let width = Double(fields[2]) ?? 0
+		#expect(abs(width - advance) < 0.01)
+		#expect(Double(fields[3]) == 0.6)
+	}
+
+	@Test("a struck run keeps its rule when the line is opened out to the measure")
+	func strikethroughSurvivesJustification() {
+		// justification re-lays every word of a broken line, so a strike that
+		// is not carried through the rebuild would vanish from the page.
+		let filler = Array(repeating: "measure", count: 60).joined(separator: " ")
+		let struck = pdfText(MarkdownDocument(parsing: "~~withdrawn~~ \(filler)").render())
+		let plain = pdfText(MarkdownDocument(parsing: filler).render())
+		#expect(struck.contains("(withdrawn) Tj"))
+		#expect(rectLines(struck).subtracting(rectLines(plain)).count == 1)
+	}
+
+	@Test("a struck phrase draws one rule across it, word spaces included")
+	func strikethroughCoalesces() {
+		let style = MarkdownStyle.standard
+		let face = style.typeface.font(bold: false, italic: false)
+		let words = ["alpha", "beta", "gamma", "delta"]
+		let line = words.joined(separator: " ")
+		let plain = pdfText(MarkdownDocument(parsing: line).render())
+		let struck = pdfText(MarkdownDocument(parsing: "~~\(line)~~").render())
+		// the four words sit on one line, so the strike crosses them as one
+		// rule rather than one rule per word.
+		let added = rectLines(struck).subtracting(rectLines(plain))
+		#expect(added.count == 1)
+		let width = Double((added.first ?? "").components(separatedBy: " ")[2]) ?? 0
+		let glyphs = words.reduce(0.0) { $0 + face.width(of: $1, size: style.bodySize) }
+		// the rule runs past the last glyph — it strikes the word spaces too.
+		#expect(width > glyphs + 0.5)
 	}
 }

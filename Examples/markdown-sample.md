@@ -9,21 +9,37 @@ declarative exporter. Write prose in markdown, get a typeset document.
 - paragraphs with `**bold**`, `*italic*`, `***both***`, and `_underscored_`
 - inline `` `code spans` `` and fenced code blocks with an info word
 - ordered (`1.`, `2)`) and unordered (`-`, `*`, `+`) lists, nested by indent
-- blockquotes with a left rule
-- thematic breaks (`---`, `***`, `___`)
-- `[links](https://example.com)` and `![alt text](image.png)`
+- pipe tables with per-column alignment
+- blockquotes, thematic breaks, `[links](https://example.com)`, and images
 
-## a table, eventually
+### nested lists
 
-| feature | status |
-| --- | --- |
-| tables | not yet |
-| footnotes | not yet |
+- a list item may hold
+  - a nested list
+  - or a second block
+- and the marker gutter stays put
 
-> Note — tables and footnotes are deliberately out of scope for now. Everything
-> above rides on the same hand-set pdf writer: no engine, no cmark, no C.
+## tables
 
-### code
+| feature | status | notes |
+| :--- | :---: | ---: |
+| tables | supported | `\|` escapes, code spans, alignment |
+| footnotes | not yet | out of scope |
+| raw html | not yet | deliberately out of scope |
+
+> A quote sets in the muted ink behind an accent bar — the same restrained
+> palette the section rules, list markers and code panels use.
+
+#### four levels deep
+
+Body copy sits at the working size on a generous leading, measured to a
+column that keeps a line near the comfortable reading range.
+
+##### small caps label
+
+Weights and colours carry the hierarchy from here down.
+
+## code
 
 ```swift
 let document = MarkdownDocument(parsing: source)

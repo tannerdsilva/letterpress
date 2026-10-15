@@ -1,4 +1,5 @@
-// inline scanning: emphasis, code spans, links, escapes, entities.
+// inline scanning: emphasis, strikethrough, code spans, links, escapes,
+// entities.
 //
 // the scanner is a single left-to-right pass with recursion for nested
 // emphasis. every delimiter that has no matching closer degrades to literal
@@ -75,6 +76,16 @@ enum InlineParser {
 				if found.length == 1 || found.length == 3 { nested.insert(.italic) }
 				scan(Array(inner), traits: nested, url: url, into: &out)
 				i = found.contentEnd + found.length
+				continue
+			}
+
+			// ~~strikethrough~~
+			if c == "~", let found = strike(chars, at: i) {
+				flush()
+				scan(
+					Array(found.content), traits: traits.union(.strikethrough),
+					url: url, into: &out)
+				i = found.end
 				continue
 			}
 
@@ -227,6 +238,23 @@ enum InlineParser {
 					j += 1
 				}
 			}
+		}
+		return nil
+	}
+
+	/// a `~~struck~~` span: two tildes opening, two or more closing. a lone
+	/// `~` stays literal, and a strike with no closer degrades to its own
+	/// tildes rather than swallowing the rest of the line.
+	private static func strike(_ chars: [Character], at i: Int) -> (content: String, end: Int)? {
+		guard runLength(chars, at: i, of: "~") >= 2 else { return nil }
+		var j = i + 2
+		while j < chars.count {
+			guard chars[j] == "~" else { j += 1; continue }
+			let close = runLength(chars, at: j, of: "~")
+			guard close >= 2 else { j += close; continue }
+			let content = String(chars[(i + 2) ..< j])
+			guard !content.isEmpty, !content.hasPrefix(" "), !content.hasSuffix(" ") else { return nil }
+			return (content, j + close)
 		}
 		return nil
 	}

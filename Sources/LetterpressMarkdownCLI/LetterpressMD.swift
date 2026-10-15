@@ -35,17 +35,20 @@ struct LetterpressMD: ParsableCommand {
 	)
 	var output: String?
 
+	// both style flags are optional: the theme owns its own defaults, and a
+	// flag replaces one only when it is actually given, so the cli never
+	// silently overrides the shipped look.
 	@Option(
 		name: .customLong("page-size"),
-		help: ArgumentHelp("Page size.", valueName: "a4|letter|a5")
+		help: ArgumentHelp("Page size.", discussion: "Defaults to the theme's own.", valueName: "a4|letter|a5")
 	)
-	var pageSize: PageSizeOption = .a4
+	var pageSize: PageSizeOption?
 
 	@Option(
 		name: .customLong("typeface"),
 		help: ArgumentHelp("Body typeface.", valueName: "sans|serif")
 	)
-	var typeface: TypefaceOption = .sans
+	var typeface: TypefaceOption?
 
 	@Flag(inversion: .prefixedNo, help: "Suppress the json summary on stdout.")
 	var quiet = false
@@ -56,8 +59,8 @@ struct LetterpressMD: ParsableCommand {
 		let source = try readSource()
 
 		var style = MarkdownStyle()
-		style.pageSize = pageSize.pageSize
-		style.typeface = typeface.typeface
+		if let pageSize { style.pageSize = pageSize.pageSize }
+		if let typeface { style.typeface = typeface.typeface }
 
 		let document = MarkdownDocument(parsing: source)
 		let result = document.pagination(style: style)
