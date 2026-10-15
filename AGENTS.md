@@ -113,7 +113,7 @@ shasum -a 256 /tmp/a.pdf /tmp/b.pdf
 ```
 
 the package builds and tests clean on macOS (arm64) and Linux (x86_64) with
-Swift 6.4. cross-platform claims get verified on the linux box, never assumed.
+Swift 6.4. cross-platform claims get verified on both, never assumed.
 
 ## 5. the two suites that matter most
 
@@ -232,5 +232,3 @@ enumerated in the README's `limitations (v1, by design)` section and are
 deliberate, not gaps: base-14 fonts only (no embedding, no unicode beyond
 winansi), no images, no flate compression, no links or form fields, no kerning,
 and an unbreakable mark taller than the content box still overflows visibly.
-
-the package has no remote yet. until it does, this disk is the only copy.

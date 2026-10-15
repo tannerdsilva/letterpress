@@ -1,8 +1,9 @@
 # letterpress
 
-a declarative, zero-dependency pdf exporter for swift. the sibling of
-[`no-webui`](../no-webui): same architecture, different wire format — instead
-of html/css, it writes the pdf object model by hand.
+a declarative, zero-dependency pdf exporter for swift. letterpress describes
+pages the way swiftui describes views: you compose value types that declare
+*what* is drawn, and a two-pass engine measures the layout and then writes the
+pdf content stream. the pdf object model is written by hand.
 
 ## why "letterpress"
 

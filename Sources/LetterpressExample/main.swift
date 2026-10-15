@@ -20,7 +20,7 @@ let document = PDFDocument {
 			.at(x: 74, y: 122)
 
 		// word-wrapped narrative
-		Paragraph("this library mirrors the no-webui architecture: a Mark protocol with a result-builder DSL, value-type primitives, and modifiers that wrap content emission. everything below is drawn by this binary — no external dependencies, no frameworks, just the pdf object model written by hand.")
+		Paragraph("a Mark protocol with a result-builder DSL, value-type primitives, and modifiers that wrap content emission. everything below is drawn by this binary — no external dependencies, no frameworks, just the pdf object model written by hand.")
 			.font(.times, size: 12)
 			.foregroundColor(.ink)
 			.frame(maxWidth: 460)
