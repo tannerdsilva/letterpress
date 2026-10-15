@@ -13,9 +13,9 @@ long document paginates with no manual page management.
 import LetterpressMarkdown
 
 let document = MarkdownDocument(parsing: source)
-let bytes = document.render(style: .standard)        // [UInt8]
-let pages = document.pdfDocument(style: .standard)   // the pages, before writing
-let (flowed, warnings) = document.pagination()       // + whatever would not fit
+let bytes = document.render(style: .standard)                 // [UInt8]
+let pdf = document.pdfDocument(style: .standard)              // the document, before writing
+let (pages, warnings) = document.pagination()                 // + whatever would not fit
 ```
 
 `pagination()` is `pdfDocument()` with the overflow report kept: it returns the

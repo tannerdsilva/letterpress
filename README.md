@@ -43,9 +43,14 @@ let document = PDFDocument {
     .background(Color(hex: 0xF8FAFC))
 }
 
-let bytes = document.render()         // [UInt8]
-try document.write(to: someURL)       // or straight to disk
+let bytes = document.render()         // [UInt8] — the whole pdf
 ```
+
+the bytes are the entire product. the exporter has no file api and imports
+nothing at all — no Foundation, no platform shim — so where they go is the
+caller's call. the two executables in this package write them through
+[`swift-system`](https://github.com/apple/swift-system); a caller that already
+has Foundation can use `Data(bytes)` and `write(to:)`.
 
 ## the model
 
@@ -160,15 +165,19 @@ HStack(alignment: .center) {
   painted — `Text("x").fill(.red)` does not compile
 - deterministic output (byte-identical across runs), minimal numbers
   (`612`, not `612.00`), trimmed trailing zeros
-- pure swift, no Foundation beyond `Date`/`URL`/`Data`/`FileManager`; the
-  renderer accumulates `[UInt8]`
+- pure swift with no dependencies and no Foundation at all: the `Letterpress`
+  module imports *nothing*, and the renderer accumulates `[UInt8]`. the core's
+  only two dependencies on the outside world — `pow` and the file write — are
+  gone: the first is integer arithmetic, the second is the caller's job
 
 ## markdown → pdf
 
 `LetterpressMarkdown` is a separate, zero-dependency target that typesets a
 markdown subset into a paginated document. `letterpress-md` is the CLI over it;
-the CLI is the only target in the package that takes a dependency
-(`swift-argument-parser` — the exporter and the markdown layer stay clean).
+the CLI and the example are the only targets in the package that take a
+dependency (`swift-argument-parser` for the cli, `swift-system` for the file
+handling — the exporter and the markdown layer stay clean, and neither imports
+Foundation).
 
 ```bash
 swift run letterpress-md Examples/markdown-sample.md -o sample.pdf
@@ -216,7 +225,7 @@ let bytes = document.render(style: .standard)   // or .pdfDocument() for the pag
 ## verify
 
 ```bash
-swift test                              # 213 tests, 26 suites
+swift test                              # 222 tests, 26 suites
 swift run LetterpressExample            # writes letterpress-example.pdf
 swift run letterpress-md Examples/markdown-sample.md -o sample.pdf
 pdfinfo/pdftotext/pdftoppm letterpress-example.pdf   # independent parser check
@@ -270,11 +279,12 @@ own bytes.
 the api docs are inline `///` comments on every public symbol, plus a docc
 catalog per module — `Sources/Letterpress/Letterpress.docc` and
 `Sources/LetterpressMarkdown/LetterpressMarkdown.docc` — each with a curated
-landing page and an architecture article. the package deliberately takes no
-`swift-docc-plugin` dependency, so build them with `docc` directly:
+landing page covering every public type, and articles behind it
+(`Architecture`, `WritingBytes`, `MarkdownPipeline`). the package deliberately
+takes no `swift-docc-plugin` dependency, so build them with `docc` directly:
 
 ```bash
-sg=$(mktemp -d)                     # one module's graph per dir
+sg=$(mktemp -d)
 swift build --target Letterpress \
   -Xswiftc -emit-symbol-graph -Xswiftc -emit-symbol-graph-dir -Xswiftc "$sg"
 xcrun docc convert Sources/Letterpress/Letterpress.docc \
@@ -282,8 +292,22 @@ xcrun docc convert Sources/Letterpress/Letterpress.docc \
   --warnings-as-errors
 ```
 
-swap the target and the catalog path for `LetterpressMarkdown`. emit each
-module's graph into its own directory — `docc` refuses a build whose inputs
-describe more than one main module. both catalogs convert with zero warnings
-under `--warnings-as-errors`. this README stays the reference for the y-down
-coordinate law, auto layout, and pagination.
+`LetterpressMarkdown` needs one extra step, and it is the step that is easy to
+get wrong: a `--target` build emits a symbol graph for everything that target
+depends on, and `docc` refuses inputs describing more than one module. so a
+per-module directory is not enough on its own — the directory has to hold that
+module's graph and *nothing else*.
+
+```bash
+sg=$(mktemp -d)
+swift build --target LetterpressMarkdown \
+  -Xswiftc -emit-symbol-graph -Xswiftc -emit-symbol-graph-dir -Xswiftc "$sg"
+rm "$sg/Letterpress.symbols.json"   # emitted as a dependency of the target
+xcrun docc convert Sources/LetterpressMarkdown/LetterpressMarkdown.docc \
+  --additional-symbol-graph-dir "$sg" -o /tmp/LetterpressMarkdown.doccarchive \
+  --warnings-as-errors
+```
+
+both catalogs convert with zero warnings under `--warnings-as-errors`. this
+README stays the reference for the y-down coordinate law, auto layout, and
+pagination.

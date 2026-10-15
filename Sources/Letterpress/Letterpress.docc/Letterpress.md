@@ -32,9 +32,12 @@ let document = PDFDocument {
     .background(Color(hex: 0xF8FAFC))
 }
 
-let bytes = document.render()       // [UInt8]
-try document.write(to: someURL)     // or straight to disk
+let bytes = document.render()       // [UInt8] — the whole pdf
 ```
+
+the bytes are the entire product: the exporter has no file api and imports
+nothing at all, so where they go is the caller's call — see
+<doc:WritingBytes>.
 
 every mark is a value type, and every modifier returns a new type —
 `ModifiedMark<Content, Modifier>` — so the concrete type survives the whole
@@ -150,3 +153,4 @@ path cannot be painted — `Text("x").fill(.red)` does not compile.
 ### Articles
 
 - <doc:Architecture>
+- <doc:WritingBytes>
