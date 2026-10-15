@@ -1,5 +1,3 @@
-import Foundation
-
 // MARK: - FlexibleMark
 
 /// a mark that absorbs leftover main-axis space inside a `HStack` or

@@ -1,4 +1,3 @@
-import Foundation
 @testable import Letterpress
 
 // MARK: - structural pdf harness
@@ -14,12 +13,11 @@ struct ParsedPDF {
 
 	init?(bytes: [UInt8]) {
 		guard bytes.count > 16,
-			let first8 = String(data: Data(bytes.prefix(8)), encoding: .utf8),
-			first8.hasPrefix("%PDF-")
+			String(decoding: bytes.prefix(8), as: UTF8.self).hasPrefix("%PDF-")
 		else { return nil }
 
 		let text = String(decoding: bytes, as: UTF8.self)
-		guard let xrefRange = text.range(of: "startxref\n"),
+		guard let xrefRange = text.firstRange(of: "startxref\n"),
 			let xrefLine = text[xrefRange.upperBound...].split(separator: "\n").first,
 			let xrefOffset = Int(xrefLine),
 			xrefOffset < bytes.count
@@ -52,16 +50,16 @@ struct ParsedPDF {
 		guard number > 0, number < objectCount, objectOffsets[number] >= 0 else { return nil }
 		let offset = objectOffsets[number]
 		let text = String(decoding: bytes.dropFirst(offset), as: UTF8.self)
-		guard let bodyStart = text.range(of: "obj\n") else { return nil }
-		guard let end = text.range(of: "endobj") else { return nil }
+		guard let bodyStart = text.firstRange(of: "obj\n") else { return nil }
+		guard let end = text.firstRange(of: "endobj") else { return nil }
 		return String(text[bodyStart.upperBound ..< end.lowerBound])
 	}
 
 	/// the raw content-stream body of a stream object.
 	func contentStream(_ number: Int) -> String? {
-		guard let body = objectBody(number), let start = body.range(of: "stream\n") else { return nil }
+		guard let body = objectBody(number), let start = body.firstRange(of: "stream\n") else { return nil }
 		let after = body[start.upperBound...]
-		guard let end = after.range(of: "\nendstream") else { return nil }
+		guard let end = after.firstRange(of: "\nendstream") else { return nil }
 		return String(after[..<end.lowerBound])
 	}
 

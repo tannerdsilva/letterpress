@@ -1,5 +1,3 @@
-import Foundation
-
 // MARK: - Font
 
 /// a base-14 pdf font, referenced by name — never embedded.

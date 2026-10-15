@@ -1,12 +1,10 @@
-import Foundation
-
 // MARK: - PDFNumber
 
 /// a locale-independent fixed-point pdf number.
 ///
-/// pdf grammar requires '.' as the decimal separator. `String(format:)`
-/// honors the process locale (a German locale emits ','), so pdf numbers are
-/// formatted with integer arithmetic instead — deterministic on every host.
+/// pdf grammar requires '.' as the decimal separator, and the process locale
+/// must never get a say: the digits are produced with integer arithmetic, so
+/// the same value spells the same way on every host.
 public struct PDFNumber: Sendable, Hashable, CustomStringConvertible {
 	/// the value being formatted.
 	public let value: Double
@@ -29,7 +27,13 @@ public struct PDFNumber: Sendable, Hashable, CustomStringConvertible {
 	/// zeros trimmed so whole numbers print as integers (`612`, not `612.00`).
 	private static func fixed(_ value: Double, _ decimals: Int) -> String {
 		precondition(decimals >= 0 && decimals <= 6, "decimals out of range: \(decimals)")
-		let factor = Int(pow(10.0, Double(decimals)))
+		// 10^decimals by repeated multiplication. `pow` would reach for the C
+		// math library, and the exponent is a small preconditioned integer, so
+		// integer arithmetic keeps this file — and the module — import-free.
+		var factor = 1
+		for _ in 0 ..< decimals {
+			factor *= 10
+		}
 		let rounded = (value * Double(factor)).rounded()
 		let negative = rounded < 0
 		let magnitude = negative ? -rounded : rounded

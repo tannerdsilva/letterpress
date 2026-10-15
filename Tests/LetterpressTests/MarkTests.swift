@@ -1,4 +1,3 @@
-import Foundation
 import Testing
 @testable import Letterpress
 
@@ -142,9 +141,9 @@ private let a4Height = 841.89
 			}
 		}
 		let s = contentStreamText(doc)
-		let pathEnd = try #require(s.range(of: "re\n"))
-		let fill = try #require(s.range(of: "f\n"))
-		let stroke = try #require(s.range(of: "S\n"))
+		let pathEnd = try #require(s.firstRange(of: "re\n"))
+		let fill = try #require(s.firstRange(of: "f\n"))
+		let stroke = try #require(s.firstRange(of: "S\n"))
 		#expect(pathEnd.lowerBound < fill.lowerBound)
 		#expect(fill.upperBound < stroke.lowerBound)
 		#expect(s.contains("2 w\n"))
@@ -166,9 +165,9 @@ private let a4Height = 841.89
 		#expect(countOccurrences(bytes, Array("f\n".utf8)) == 1)
 		#expect(countOccurrences(bytes, Array("S\n".utf8)) == 1)
 
-		let fill = try #require(s.range(of: "f\n"))
-		let restated = try #require(s.range(of: "re\n", range: fill.upperBound ..< s.endIndex))
-		let stroke = try #require(s.range(of: "S\n"))
+		let fill = try #require(s.firstRange(of: "f\n"))
+		let restated = try #require(s[fill.upperBound...].firstRange(of: "re\n"))
+		let stroke = try #require(s.firstRange(of: "S\n"))
 		#expect(fill.upperBound < restated.lowerBound)
 		// the restated path runs straight into the stroke it exists for
 		#expect(s.contains("re\nS\n"))

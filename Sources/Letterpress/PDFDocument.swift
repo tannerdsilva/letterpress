@@ -1,5 +1,3 @@
-import Foundation
-
 // MARK: - PageSize
 
 /// a page's dimensions in points (1/72 inch).
@@ -153,13 +151,11 @@ public struct PDFDocument: Sendable {
 	}
 
 	/// assemble the document into pdf bytes.
+	///
+	/// the bytes are the whole product: the exporter never touches the
+	/// filesystem, so a caller decides what to do with them — write them with
+	/// whatever file layer it already has, or hand them straight to a socket.
 	public func render() -> [UInt8] {
 		PDFWriter(pages: pages).render()
-	}
-
-	/// assemble the document and write it to `url`.
-	public func write(to url: URL) throws {
-		let data = Data(render())
-		try data.write(to: url)
 	}
 }

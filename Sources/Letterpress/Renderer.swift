@@ -1,5 +1,3 @@
-import Foundation
-
 // MARK: - Renderer
 
 /// accumulates one page's content stream and tracks the resources the page

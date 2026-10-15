@@ -1,5 +1,3 @@
-import Foundation
-
 // MARK: - PDFWriter
 
 /// assembles a rendered document: page content streams, object numbering,

@@ -1,6 +1,7 @@
-import Testing
 import Letterpress
 import LetterpressMarkdown
+import LetterpressTestSupport
+import Testing
 
 // rendering coverage: the artifact's bytes — fonts, encoding declaration,
 // pagination, determinism, and the cp1252 byte guard.
@@ -15,7 +16,7 @@ private func pdfText(_ bytes: [UInt8]) -> String {
 /// documents can be differenced by the rules one drew and the other did not.
 private func rectLines(_ text: String) -> Set<String> {
 	var lines: Set<String> = []
-	for line in text.components(separatedBy: "\n") where line.hasSuffix(" re") {
+	for line in text.separated(by: "\n") where line.hasSuffix(" re") {
 		lines.insert(line)
 	}
 	return lines
@@ -92,8 +93,8 @@ private func rectLines(_ text: String) -> Set<String> {
 	func winAnsiDeclared() {
 		let document = MarkdownDocument(parsing: "# hi\n\ntext with “curly quotes” and an em—dash")
 		let text = pdfText(document.render())
-		let fontObjects = text.components(separatedBy: "/Type /Font").count - 1
-		let declared = text.components(separatedBy: "/Encoding /WinAnsiEncoding").count - 1
+		let fontObjects = text.separated(by: "/Type /Font").count - 1
+		let declared = text.separated(by: "/Encoding /WinAnsiEncoding").count - 1
 		#expect(fontObjects > 0)
 		#expect(fontObjects == declared)
 	}
@@ -154,7 +155,7 @@ private func rectLines(_ text: String) -> Set<String> {
 		// advance of the word it strikes — no more, no less.
 		let added = rectLines(struck).subtracting(rectLines(plain))
 		#expect(added.count == 1)
-		let fields = (added.first ?? "").components(separatedBy: " ")
+		let fields = (added.first ?? "").separated(by: " ")
 		#expect(fields.count == 5)
 		let advance = style.typeface.font(bold: false, italic: false)
 			.width(of: "withdrawn", size: style.bodySize)
@@ -188,7 +189,7 @@ private func rectLines(_ text: String) -> Set<String> {
 		// rule rather than one rule per word.
 		let added = rectLines(struck).subtracting(rectLines(plain))
 		#expect(added.count == 1)
-		let width = Double((added.first ?? "").components(separatedBy: " ")[2]) ?? 0
+		let width = Double((added.first ?? "").separated(by: " ")[2]) ?? 0
 		let glyphs = words.reduce(0.0) { $0 + face.width(of: $1, size: style.bodySize) }
 		// the rule runs past the last glyph — it strikes the word spaces too.
 		#expect(width > glyphs + 0.5)

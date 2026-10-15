@@ -1,5 +1,3 @@
-import Foundation
-
 // MARK: - text emission helper
 
 /// emit one BT/ET text object containing `lines`, each placed absolutely.

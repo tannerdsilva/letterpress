@@ -1,5 +1,3 @@
-import Foundation
-
 // MARK: - Point
 
 /// a point in user space (x right, y down — same orientation as a web page).

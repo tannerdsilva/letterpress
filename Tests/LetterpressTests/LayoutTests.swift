@@ -1,4 +1,3 @@
-import Foundation
 import Testing
 @testable import Letterpress
 
@@ -195,8 +194,8 @@ private func approxEqual(_ a: Double, _ b: Double, tolerance: Double = 0.0005) -
 			}
 		}
 		let s = allContentStreams(doc)
-		let rectIndex = s.range(of: " re")!.lowerBound
-		let textIndex = s.range(of: "(top)")!.lowerBound
+		let rectIndex = s.firstRange(of: " re")!.lowerBound
+		let textIndex = s.firstRange(of: "(top)")!.lowerBound
 		#expect(rectIndex < textIndex)
 	}
 

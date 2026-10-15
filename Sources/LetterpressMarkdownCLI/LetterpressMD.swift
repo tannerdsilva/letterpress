@@ -1,7 +1,7 @@
 import ArgumentParser
-import Foundation
 import Letterpress
 import LetterpressMarkdown
+import SystemPackage
 
 // letterpress-md — typeset a markdown file into an informative pdf.
 //
@@ -10,6 +10,11 @@ import LetterpressMarkdown
 //
 // a `-` input reads the markdown from stdin. the summary goes to stdout as
 // compact json so the tool composes with other commands.
+//
+// the cli is the one place in the package that touches the filesystem, and it
+// does so through `SystemPackage` rather than Foundation: the exporter hands
+// back `[UInt8]` and the markdown layer composes marks, so the bytes meet a
+// file descriptor exactly once — here.
 
 // MARK: - command
 
@@ -69,26 +74,23 @@ struct LetterpressMD: ParsableCommand {
 		let destination = resolveDestination()
 
 		do {
-			try Data(bytes).write(to: URL(fileURLWithPath: destination))
+			try write(bytes, to: destination)
 		} catch {
 			throw LetterpressMDError("cannot write '\(destination)'")
 		}
 
 		if !quiet {
-			let summary = Summary(
-				input: input,
-				output: destination,
-				title: document.title,
-				blocks: document.blocks.count,
-				pages: pdf.pages.count,
-				bytes: bytes.count,
-				warnings: result.warnings.count
+			print(
+				Summary(
+					input: input,
+					output: destination,
+					title: document.title,
+					blocks: document.blocks.count,
+					pages: pdf.pages.count,
+					bytes: bytes.count,
+					warnings: result.warnings.count
+				).json
 			)
-			let encoder = JSONEncoder()
-			encoder.outputFormatting = [.sortedKeys]
-			if let data = try? encoder.encode(summary) {
-				print(String(decoding: data, as: UTF8.self))
-			}
 		}
 
 		// the pdf is written either way: the exit code is what says it is wrong.
@@ -99,23 +101,51 @@ struct LetterpressMD: ParsableCommand {
 
 	// MARK: helpers
 
+	/// the markdown source: from the file named by `input`, or from stdin when
+	/// `input` is `-`.
 	private func readSource() throws -> String {
-		guard input == "-" else {
-			do {
-				return try String(contentsOfFile: input, encoding: .utf8)
-			} catch {
-				throw LetterpressMDError("cannot read '\(input)'")
-			}
+		guard input != "-" else {
+			return String(decoding: try read(toEnd: .standardInput), as: UTF8.self)
 		}
-		return String(decoding: FileHandle.standardInput.readDataToEndOfFile(), as: UTF8.self)
+		guard let bytes = try? read(toEnd: FilePath(input)) else {
+			throw LetterpressMDError("cannot read '\(input)'")
+		}
+		return String(decoding: bytes, as: UTF8.self)
 	}
 
+	/// every byte of `path`.
+	private func read(toEnd path: FilePath) throws -> [UInt8] {
+		let file = try FileDescriptor.open(path, .readOnly)
+		defer { try? file.close() }
+		return try read(toEnd: file)
+	}
+
+	/// drain `file` to end of file.
+	private func read(toEnd file: FileDescriptor) throws -> [UInt8] {
+		var bytes: [UInt8] = []
+		var buffer = [UInt8](repeating: 0, count: 32 * 1024)
+		while true {
+			let count = try buffer.withUnsafeMutableBytes { try file.read(into: $0) }
+			if count == 0 { return bytes }
+			bytes.append(contentsOf: buffer[0 ..< count])
+		}
+	}
+
+	/// write `bytes` to `path`, creating or replacing it.
+	private func write(_ bytes: [UInt8], to path: String) throws {
+		let file = try FileDescriptor.open(
+			FilePath(path), .writeOnly, options: [.create, .truncate], permissions: .ownerReadWrite)
+		defer { try? file.close() }
+		try file.writeAll(bytes)
+	}
+
+	/// where the pdf goes: `--output`, else the input path with a `.pdf`
+	/// suffix, else `out.pdf` for a stdin run.
 	private func resolveDestination() -> String {
 		if let output { return output }
 		guard input != "-" else { return "out.pdf" }
-		let url = URL(fileURLWithPath: input)
-		let base = url.deletingPathExtension().lastPathComponent
-		return url.deletingLastPathComponent().appendingPathComponent("\(base).pdf").path
+		let path = FilePath(input)
+		return path.removingLastComponent().appending("\(path.stem ?? "out").pdf").description
 	}
 }
 
@@ -175,7 +205,7 @@ struct LetterpressMDError: Error, CustomStringConvertible {
 // MARK: - summary
 
 /// the compact json line the tool prints before it reports overflow.
-struct Summary: Encodable {
+struct Summary {
 	let input: String
 	let output: String
 	let title: String?
@@ -184,4 +214,50 @@ struct Summary: Encodable {
 	let bytes: Int
 	/// how many flow marks ran past the content box; non-zero means exit 1.
 	let warnings: Int
+
+	/// the summary as one line of json, keys in alphabetical order.
+	///
+	/// written by hand rather than through `JSONEncoder`, which lives in
+	/// Foundation; the field set is fixed and small, so the writer is a dozen
+	/// lines instead of a codec.
+	var json: String {
+		var fields: [String] = []
+		fields.append("\"blocks\":\(blocks)")
+		fields.append("\"bytes\":\(bytes)")
+		fields.append("\"input\":\(JSONText.string(input))")
+		fields.append("\"output\":\(JSONText.string(output))")
+		fields.append("\"pages\":\(pages)")
+		fields.append("\"title\":\(title.map(JSONText.string) ?? "null")")
+		fields.append("\"warnings\":\(warnings)")
+		return "{\(fields.joined(separator: ","))}"
+	}
+}
+
+/// the slice of the json grammar a summary line needs.
+enum JSONText {
+	/// `value` as a json string literal, with the escapes the grammar requires.
+	static func string(_ value: String) -> String {
+		var out = "\""
+		for scalar in value.unicodeScalars {
+			switch scalar {
+			case "\"": out += "\\\""
+			case "\\": out += "\\\\"
+			case "\n": out += "\\n"
+			case "\r": out += "\\r"
+			case "\t": out += "\\t"
+			default:
+				if scalar.value < 0x20 {
+					out += "\\u" + pad(String(scalar.value, radix: 16))
+				} else {
+					out.unicodeScalars.append(scalar)
+				}
+			}
+		}
+		return out + "\""
+	}
+
+	/// a `\u` escape body, left-padded to the four hex digits json requires.
+	private static func pad(_ digits: String) -> String {
+		String(repeating: "0", count: max(0, 4 - digits.count)) + digits
+	}
 }

@@ -1,4 +1,3 @@
-import Foundation
 import Testing
 @testable import Letterpress
 
@@ -84,21 +83,7 @@ import Testing
 		#expect(s.contains("(erased)"))
 	}
 
-	@Test("write(to:) produces a file with the same bytes")
-	func writeToURL() throws {
-		let doc = PDFDocument {
-			PDFPage(.a4) { Text("disk").font(.helveticaBold, size: 20).at(x: 72, y: 72) }
-		}
-		let expected = doc.render()
-		let url = URL(fileURLWithPath: NSTemporaryDirectory())
-			.appendingPathComponent("letterpress-test-\(UUID().uuidString).pdf")
-		try doc.write(to: url)
-		defer { try? FileManager.default.removeItem(at: url) }
-		let onDisk = try Data(contentsOf: url)
-		#expect(Array(onDisk) == expected)
-	}
-
-	@Test("example document renders and writes")
+	@Test("example document renders to the documented object graph")
 	func exampleDocument() throws {
 		// mirror the shipped example's surface so the demo never rots
 		let doc = PDFDocument {

@@ -1,7 +1,8 @@
-import Foundation
 import Testing
 import Letterpress
 import LetterpressMarkdown
+import LetterpressTestSupport
+import SystemPackage
 
 // where the glyphs actually landed, asked of a parser we did not write.
 //
@@ -19,7 +20,7 @@ private enum Poppler {
 
 	/// whether `pdftotext` exists on this host.
 	static let available: Bool = {
-		run(["pdftotext", "-v"]).status == 0
+		(try? run(["pdftotext", "-v"]))?.status == 0
 	}()
 
 	/// one word and the box the parser drew around it.
@@ -31,24 +32,15 @@ private enum Poppler {
 		let text: String
 	}
 
-	/// run a poppler tool and return its exit status and stdout.
+	/// run a poppler tool and return what it left behind.
 	@discardableResult
-	private static func run(_ arguments: [String]) -> (status: Int32, output: String) {
-		let process = Process()
-		process.executableURL = URL(fileURLWithPath: launcher)
-		process.arguments = arguments
-		let out = Pipe()
-		process.standardOutput = out
-		process.standardError = Pipe()
-		do { try process.run() } catch { return (-1, "") }
-		let data = out.fileHandleForReading.readDataToEndOfFile()
-		process.waitUntilExit()
-		return (process.terminationStatus, String(decoding: data, as: UTF8.self))
+	private static func run(_ arguments: [String]) throws -> ChildResult {
+		try Spawn.run([launcher] + arguments)
 	}
 
 	/// every word on the page, with the box the parser drew around it.
-	static func words(in url: URL) -> [Word] {
-		let xml = run(["pdftotext", "-bbox", url.path, "-"]).output
+	static func words(in path: FilePath) -> [Word] {
+		let xml = (try? run(["pdftotext", "-bbox", path.description, "-"]))?.stdout ?? ""
 		let pattern = #/<word xMin="([0-9.]+)" yMin="([0-9.]+)" xMax="([0-9.]+)" yMax="([0-9.]+)">([^<]*)<\/word>/# 
 		return xml.matches(of: pattern).compactMap { match in
 			guard let xMin = Double(match.1), let yMin = Double(match.2),
@@ -59,19 +51,18 @@ private enum Poppler {
 	}
 
 	/// the plain text the parser extracts.
-	static func text(in url: URL) -> String {
-		run(["pdftotext", url.path, "-"]).output
+	static func text(in path: FilePath) -> String {
+		(try? run(["pdftotext", path.description, "-"]))?.stdout ?? ""
 	}
 }
 
 @Suite("markdown visual check", .enabled(if: Poppler.available))
 struct MarkdownVisualTests {
 	/// write `document` to a scratch file the caller removes.
-	private func write(_ document: MarkdownDocument, style: MarkdownStyle = .standard) throws -> URL {
-		let url = FileManager.default.temporaryDirectory
-			.appendingPathComponent("letterpress-markdown-\(UUID().uuidString).pdf")
-		try Data(document.render(style: style)).write(to: url)
-		return url
+	private func write(_ document: MarkdownDocument, style: MarkdownStyle = .standard) throws -> FilePath {
+		let path = Scratch.path("markdown")
+		try Scratch.write(document.render(style: style), to: path)
+		return path
 	}
 
 	@Test("the bullet glyph sits on its item's baseline, not below it")
@@ -79,10 +70,10 @@ struct MarkdownVisualTests {
 		// the shipped bullet is set at 1.15 × the body size, and a larger size
 		// draws its baseline lower on the line; the layer lifts it back. if the
 		// lift is dropped the two baselines separate by ~1.3pt.
-		let url = try write(MarkdownDocument(parsing: "- alpha beta\n- gamma delta"))
-		defer { try? FileManager.default.removeItem(at: url) }
+		let path = try write(MarkdownDocument(parsing: "- alpha beta\n- gamma delta"))
+		defer { Scratch.remove(path) }
 
-		let words = Poppler.words(in: url)
+		let words = Poppler.words(in: path)
 		guard let bullet = words.first(where: { $0.text == "\u{2022}" }),
 		      let first = words.first(where: { $0.text == "alpha" })
 		else {
@@ -149,10 +140,10 @@ struct MarkdownVisualTests {
 			return
 		}
 
-		let url = try write(MarkdownDocument(parsing: source))
-		defer { try? FileManager.default.removeItem(at: url) }
+		let path = try write(MarkdownDocument(parsing: source))
+		defer { Scratch.remove(path) }
 
-		let extracted = Poppler.text(in: url)
+		let extracted = Poppler.text(in: path)
 		for line in extracted.split(separator: "\n", omittingEmptySubsequences: false) {
 			#expect(!line.hasPrefix(":"), "a colon opened a line: \"\(line)\"")
 		}
@@ -165,10 +156,10 @@ struct MarkdownVisualTests {
 		let paragraph = String(repeating: "the quick brown fox jumps over the lazy dog. ", count: 24)
 		let document = MarkdownDocument(parsing: (1 ... 3).map { "## Section \($0)\n\n\(paragraph)" }
 			.joined(separator: "\n\n"))
-		let url = try write(document)
-		defer { try? FileManager.default.removeItem(at: url) }
+		let path = try write(document)
+		defer { Scratch.remove(path) }
 
-		let words = Poppler.words(in: url)
+		let words = Poppler.words(in: path)
 		guard let folio = words.first(where: { $0.text == "/" }) else {
 			Issue.record("the parser found no folio on the page")
 			return
@@ -184,10 +175,10 @@ struct MarkdownVisualTests {
 		// the defect: a `Tc` widens the glyphs but not the gap between two
 		// words, so a tracked uppercase label ran its words together —
 		// `SMALLCAPSLABEL`. the wrap folds the tracking into the gap as well.
-		let url = try write(MarkdownDocument(parsing: "##### small caps label\n\nbody"))
-		defer { try? FileManager.default.removeItem(at: url) }
+		let path = try write(MarkdownDocument(parsing: "##### small caps label\n\nbody"))
+		defer { Scratch.remove(path) }
 
-		let words = Poppler.words(in: url)
+		let words = Poppler.words(in: path)
 		guard let small = words.first(where: { $0.text == "SMALL" }),
 		      let caps = words.first(where: { $0.text == "CAPS" })
 		else {
@@ -206,13 +197,13 @@ struct MarkdownVisualTests {
 	func justifiedToMeasure() throws {
 		let paragraph = String(
 			repeating: "the quick brown fox jumps over the lazy dog and runs on ", count: 8)
-		let url = try write(MarkdownDocument(parsing: paragraph))
-		defer { try? FileManager.default.removeItem(at: url) }
+		let path = try write(MarkdownDocument(parsing: paragraph))
+		defer { Scratch.remove(path) }
 
 		let style = MarkdownStyle.standard
 		let column = style.pageSize.width - style.margins.trailing
 		let contentBottom = style.pageSize.height - style.margins.bottom
-		let body = Poppler.words(in: url).filter { $0.yMax < contentBottom }
+		let body = Poppler.words(in: path).filter { $0.yMax < contentBottom }
 
 		var edges: [Double: Double] = [:]
 		for word in body { edges[word.yMin] = max(edges[word.yMin] ?? 0, word.xMax) }

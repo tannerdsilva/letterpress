@@ -1,6 +1,7 @@
-import Testing
 import Letterpress
 import LetterpressMarkdown
+import LetterpressTestSupport
+import Testing
 
 // table coverage: GFM pipe-table parsing (delimiter, alignment, escapes, code
 // spans, ragged rows) and the rendered/paginated artifact.
@@ -162,7 +163,7 @@ import LetterpressMarkdown
 	func headerRepeats() {
 		let result = MarkdownDocument(parsing: numberedTable(200)).pagination()
 		let text = rendered(result.pages)
-		let headerMentions = text.components(separatedBy: "(key) Tj").count - 1
+		let headerMentions = text.separated(by: "(key) Tj").count - 1
 		#expect(result.pages.count > 2)
 		// one header per page the table occupies, so it repeats, never fewer.
 		#expect(headerMentions >= result.pages.count)
@@ -208,10 +209,10 @@ import LetterpressMarkdown
 		#expect(result.pages.count > 2, "the tall row did not span several pages")
 		let text = rendered(result.pages)
 		// every word of the tall cell survives the break, none is dropped.
-		let kept = text.components(separatedBy: "(overflowing) Tj").count - 1
+		let kept = text.separated(by: "(overflowing) Tj").count - 1
 		#expect(kept == 400, "the break lost \(400 - kept) words of the tall row")
 		// and the header rides along on each page the row reaches.
-		let headers = text.components(separatedBy: "(key) Tj").count - 1
+		let headers = text.separated(by: "(key) Tj").count - 1
 		#expect(headers == result.pages.count, "the header did not repeat on all \(result.pages.count) pages")
 	}
 
@@ -238,10 +239,10 @@ import LetterpressMarkdown
 		// the x of the second column's header cell, read from the `Tm` placing it.
 		func valueColumnOrigins(_ pages: [PDFPage]) -> Set<String> {
 			var origins: Set<String> = []
-			let lines = rendered(pages).components(separatedBy: "\n")
+			let lines = rendered(pages).separated(by: "\n")
 			for (index, line) in lines.enumerated() where line == "(value) Tj" {
 				guard index > 0 else { continue }
-				let parts = lines[index - 1].components(separatedBy: " ")
+				let parts = lines[index - 1].separated(by: " ")
 				// the line reads "1 0 0 1 <x> <y> Tm".
 				guard parts.count == 7, parts[6] == "Tm" else { continue }
 				origins.insert(parts[4])
@@ -282,8 +283,8 @@ import LetterpressMarkdown
 		let struck = rendered(MarkdownDocument(parsing: "| a |\n| --- |\n| ~~gone~~ |\n").pagination().pages)
 		#expect(struck.contains("(gone) Tj"))
 		#expect(!struck.contains("(~"))
-		let plainRects = plain.components(separatedBy: " re\n").count
-		let struckRects = struck.components(separatedBy: " re\n").count
+		let plainRects = plain.separated(by: " re\n").count
+		let struckRects = struck.separated(by: " re\n").count
 		#expect(struckRects == plainRects + 1)
 	}
 
@@ -304,7 +305,7 @@ import LetterpressMarkdown
 		#expect(!text.contains("(WebSocketProtocolFrameEncoder.swift) Tj"))
 
 		// every path piece on the page: word-like, so it carries a capital.
-		let pieces = text.components(separatedBy: "\n")
+		let pieces = text.separated(by: "\n")
 			.filter { $0.hasPrefix("(") && $0.hasSuffix(") Tj") }
 			.map { String($0.dropFirst().dropLast(5)) }
 			.filter { $0.contains(where: \.isUppercase) }

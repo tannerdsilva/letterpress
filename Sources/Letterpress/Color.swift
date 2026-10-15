@@ -1,5 +1,3 @@
-import Foundation
-
 // MARK: - Color
 
 /// an rgba color in the pdf device-rgb color space.

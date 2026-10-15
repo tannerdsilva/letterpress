@@ -1,4 +1,4 @@
-import Foundation
+import LetterpressTestSupport
 import Testing
 @testable import Letterpress
 
@@ -67,8 +67,8 @@ private func drawnText(_ pages: [PDFPage]) -> String {
 	var result = ""
 	for number in 4 ..< parsed.objectCount where number % 2 == 0 {
 		guard let stream = parsed.contentStream(number) else { continue }
-		for piece in stream.components(separatedBy: "(").dropFirst() {
-			guard let end = piece.range(of: ") Tj") else { continue }
+		for piece in stream.separated(by: "(").dropFirst() {
+			guard let end = piece.firstRange(of: ") Tj") else { continue }
 			result += piece[..<end.lowerBound] + " "
 		}
 	}

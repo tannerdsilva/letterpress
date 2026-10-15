@@ -1,5 +1,3 @@
-import Foundation
-
 // MARK: - WinAnsi
 
 /// the single source of truth for "which cp1252 byte does this scalar become".

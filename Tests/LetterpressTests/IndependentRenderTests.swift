@@ -1,5 +1,6 @@
-import Foundation
 import Testing
+import LetterpressTestSupport
+import SystemPackage
 @testable import Letterpress
 
 // the independent check: render a page, then ask a parser we did not write where
@@ -16,7 +17,7 @@ private enum Poppler {
 
 	/// whether `pdftotext` exists on this host.
 	static let available: Bool = {
-		run(["pdftotext", "-v"]).status == 0
+		(try? run(["pdftotext", "-v"]))?.status == 0
 	}()
 
 	/// one word and the horizontal extent the parser gave it.
@@ -26,24 +27,15 @@ private enum Poppler {
 		let text: String
 	}
 
-	/// run a poppler tool and return its exit status and stdout.
+	/// run a poppler tool and return what it left behind.
 	@discardableResult
-	private static func run(_ arguments: [String]) -> (status: Int32, output: String) {
-		let process = Process()
-		process.executableURL = URL(fileURLWithPath: launcher)
-		process.arguments = arguments
-		let out = Pipe()
-		process.standardOutput = out
-		process.standardError = Pipe()
-		do { try process.run() } catch { return (-1, "") }
-		let data = out.fileHandleForReading.readDataToEndOfFile()
-		process.waitUntilExit()
-		return (process.terminationStatus, String(decoding: data, as: UTF8.self))
+	private static func run(_ arguments: [String]) throws -> ChildResult {
+		try Spawn.run([launcher] + arguments)
 	}
 
 	/// every word on the page, with the box the parser drew around it.
-	static func words(in url: URL) -> [Word] {
-		let xml = run(["pdftotext", "-bbox", url.path, "-"]).output
+	static func words(in path: FilePath) -> [Word] {
+		let xml = (try? run(["pdftotext", "-bbox", path.description, "-"]))?.stdout ?? ""
 		let pattern = #/<word xMin="([0-9.]+)"[^>]*xMax="([0-9.]+)"[^>]*>([^<]*)<\/word>/# 
 		return xml.matches(of: pattern).compactMap { match in
 			guard let xMin = Double(match.1), let xMax = Double(match.2) else { return nil }
@@ -52,23 +44,18 @@ private enum Poppler {
 	}
 
 	/// the plain text the parser extracts.
-	static func text(in url: URL) -> String {
-		run(["pdftotext", url.path, "-"]).output
+	static func text(in path: FilePath) -> String {
+		(try? run(["pdftotext", path.description, "-"]))?.stdout ?? ""
 	}
 }
 
 @Suite("independent parser check", .enabled(if: Poppler.available))
 struct IndependentRenderTests {
 	/// write `document` to a scratch file the caller removes.
-	private func write(_ document: PDFDocument) throws -> URL {
-		let url = FileManager.default.temporaryDirectory
-			.appendingPathComponent("letterpress-independent-\(UUID().uuidString).pdf")
-		try Data(document.render()).write(to: url)
-		return url
-	}
-
-	private func remove(_ url: URL) {
-		try? FileManager.default.removeItem(at: url)
+	private func write(_ document: PDFDocument) throws -> FilePath {
+		let path = Scratch.path("independent")
+		try Scratch.write(document.render(), to: path)
+		return path
 	}
 
 	@Test("a bold run does not overlap the word the library places after it")
@@ -82,15 +69,15 @@ struct IndependentRenderTests {
 		let lead = "zero-dependency"
 		let start = 40.0
 		let offset = font.width(of: lead, size: size) + 2.92
-		let url = try write(PDFDocument {
+		let path = try write(PDFDocument {
 			PDFPage(.custom(width: 600, height: 200)) {
 				Text(lead).font(font, size: size).at(x: start, y: 40)
 				Text("markdown").font(.helvetica, size: size).at(x: start + offset, y: 40)
 			}
 		})
-		defer { remove(url) }
+		defer { Scratch.remove(path) }
 
-		let words = Poppler.words(in: url)
+		let words = Poppler.words(in: path)
 		#expect(words.count == 2)
 		guard words.count == 2 else { return }
 		#expect(words[0].xMax <= words[1].xMin, "bold run overlaps the next word")
@@ -105,15 +92,15 @@ struct IndependentRenderTests {
 		let run = String(repeating: "\u{2026}", count: 30)
 		let start = 40.0
 		let space = font.width(of: " ", size: size)
-		let url = try write(PDFDocument {
+		let path = try write(PDFDocument {
 			PDFPage(.custom(width: 900, height: 200)) {
 				Text(run).font(font, size: size).at(x: start, y: 40)
 				Text("tail").font(font, size: size).at(x: start + font.width(of: run, size: size) + space, y: 40)
 			}
 		})
-		defer { remove(url) }
+		defer { Scratch.remove(path) }
 
-		let words = Poppler.words(in: url)
+		let words = Poppler.words(in: path)
 		#expect(words.count == 2)
 		guard words.count == 2 else { return }
 		#expect(words[0].xMax <= words[1].xMin, "glyph run overlaps the next word")
@@ -126,14 +113,14 @@ struct IndependentRenderTests {
 	@Test("every glyph the library emits round-trips through the parser")
 	func textRoundTrips() throws {
 		let sample = "em\u{2014}dash and ellipsis\u{2026} and bullet \u{2022} and \u{201C}quotes\u{201D}"
-		let url = try write(PDFDocument {
+		let path = try write(PDFDocument {
 			PDFPage(.custom(width: 900, height: 200)) {
 				Text(sample).font(.helvetica, size: 12).at(x: 20, y: 20)
 			}
 		})
-		defer { remove(url) }
+		defer { Scratch.remove(path) }
 
-		let extracted = Poppler.text(in: url)
+		let extracted = Poppler.text(in: path)
 		for token in ["em\u{2014}dash", "ellipsis\u{2026}", "bullet \u{2022}", "\u{201C}quotes\u{201D}"] {
 			#expect(extracted.contains(token), "\(token) did not survive the round trip")
 		}

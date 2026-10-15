@@ -1,6 +1,7 @@
 import Testing
 import Letterpress
 import LetterpressMarkdown
+import LetterpressTestSupport
 
 // pagination coverage for the markdown pipeline: a document longer than a page
 // must keep every word, and must not need a warning to say so.
@@ -46,7 +47,7 @@ private func rendered(_ pages: [PDFPage]) -> String {
 		#expect(result.pages.count > 1)
 		#expect(result.warnings.isEmpty)
 		// the bar is a filled rectangle: every page of the quote paints one.
-		let bars = rendered(result.pages).components(separatedBy: "re\nf").count - 1
+		let bars = rendered(result.pages).separated(by: "re\n").count - 1
 		#expect(bars >= result.pages.count)
 	}
 

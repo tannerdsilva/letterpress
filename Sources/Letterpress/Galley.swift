@@ -1,5 +1,3 @@
-import Foundation
-
 // MARK: - Margins
 
 /// page margins in points — the print-standard 72pt (1 inch) by default.

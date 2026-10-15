@@ -1,4 +1,4 @@
-import Foundation
+import LetterpressTestSupport
 import Testing
 @testable import Letterpress
 
@@ -61,7 +61,7 @@ private func sampleDocument() -> PDFDocument {
 	func startxref() throws {
 		let bytes = sampleDocument().render()
 		let text = String(decoding: bytes, as: UTF8.self)
-		let marker = try #require(text.range(of: "startxref\n"))
+		let marker = try #require(text.firstRange(of: "startxref\n"))
 		let offset = Int(text[marker.upperBound...].prefix { $0 != "\n" })!
 		// the parsed model reports the same offset, and it really is 'x'
 		let parsed = try #require(ParsedPDF(bytes: bytes))
@@ -100,8 +100,8 @@ private func sampleDocument() -> PDFDocument {
 	func fontDedup() throws {
 		let text = String(decoding: sampleDocument().render(), as: UTF8.self)
 		// helvetica appears on both pages, times on one
-		#expect(text.components(separatedBy: "/BaseFont /Helvetica").count == 2)
-		#expect(text.components(separatedBy: "/BaseFont /Times-Roman").count == 2)
+		#expect(text.separated(by: "/BaseFont /Helvetica").count == 2)
+		#expect(text.separated(by: "/BaseFont /Times-Roman").count == 2)
 	}
 }
 
@@ -115,8 +115,8 @@ private func sampleDocument() -> PDFDocument {
 			}
 		}
 		let text = String(decoding: doc.render(), as: UTF8.self)
-		#expect(text.components(separatedBy: "/ca 0.5").count == 2)
-		#expect(text.components(separatedBy: "/GS1 gs").count == 3)  // both fills use GS1
+		#expect(text.separated(by: "/ca 0.5").count == 2)
+		#expect(text.separated(by: "/GS1 gs").count == 3)  // both fills use GS1
 	}
 
 	@Test("distinct alphas produce distinct ext-gstates")

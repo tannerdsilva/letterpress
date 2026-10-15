@@ -1,5 +1,5 @@
 import Letterpress
-import Foundation
+import SystemPackage
 
 // MARK: - demo document
 
@@ -10,9 +10,13 @@ let document = PDFDocument {
 			.foregroundColor(.ink)
 			.at(x: 72, y: 72)
 
-		Text("a declarative pdf exporter with zero dependencies. every glyph set by hand, no engine in sight.")
+		// a paragraph rather than a `Text`: the sentence is wider than the sheet, and
+		// word wrap is `.frame(maxWidth:)` on a paragraph. as a bare `Text` it ran
+		// past the trim and the page clipped its last words.
+		Paragraph("a declarative pdf exporter with zero dependencies. every glyph set by hand, no engine in sight.")
 			.font(.helvetica, size: 13)
 			.foregroundColor(.slate)
+			.frame(maxWidth: 449)
 			.at(x: 74, y: 122)
 
 		// word-wrapped narrative
@@ -186,6 +190,10 @@ let document = PDFDocument {
 let bytes = document.render()
 print("pages: \(document.pages.count), bytes: \(bytes.count)")
 
-let outputURL = URL(fileURLWithPath: "letterpress-example.pdf").absoluteURL
-try document.write(to: outputURL)
-print("wrote \(outputURL.path)")
+// the exporter hands back bytes and stops there. writing them is the caller's
+// business, and the demo does it the way any caller would: a file descriptor.
+let output = FilePath("letterpress-example.pdf")
+let file = try FileDescriptor.open(
+	output, .writeOnly, options: [.create, .truncate], permissions: .ownerReadWrite)
+_ = try file.closeAfter { try file.writeAll(bytes) }
+print("wrote \(output.description)")

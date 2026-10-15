@@ -1,5 +1,3 @@
-import Foundation
-
 // MARK: - Mark Protocol
 
 /// a declarative drawing instruction — the pdf analogue of a `View`.

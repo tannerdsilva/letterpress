@@ -1,5 +1,3 @@
-import Foundation
-
 // MARK: - paint modifiers (shapes)
 
 /// a modifier that paints without moving the geometry it wraps.
